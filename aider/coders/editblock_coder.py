@@ -18,6 +18,16 @@ class EditBlockCoder(Coder):
     edit_format = "diff"
     gpt_prompts = EditBlockPrompts()
 
+    def __init__(self, main_model, io, **kwargs):
+        # Handle editor_mode parameter for simplified prompts
+        editor_mode = kwargs.pop('editor_mode', False)
+        if editor_mode:
+            from .editor_editblock_prompts import EditorEditBlockPrompts
+            self.edit_format = "editor-diff"
+            self.gpt_prompts = EditorEditBlockPrompts()
+        
+        super().__init__(main_model, io, **kwargs)
+
     def get_edits(self):
         content = self.partial_response_content
 

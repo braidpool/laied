@@ -13,6 +13,16 @@ class WholeFileCoder(Coder):
     edit_format = "whole"
     gpt_prompts = WholeFilePrompts()
 
+    def __init__(self, main_model, io, **kwargs):
+        # Handle editor_mode parameter for simplified prompts
+        editor_mode = kwargs.pop('editor_mode', False)
+        if editor_mode:
+            from .editor_whole_prompts import EditorWholeFilePrompts
+            self.edit_format = "editor-whole"
+            self.gpt_prompts = EditorWholeFilePrompts()
+        
+        super().__init__(main_model, io, **kwargs)
+
     def render_incremental_response(self, final):
         try:
             return self.get_edits(mode="diff")

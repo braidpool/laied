@@ -187,8 +187,16 @@ class Coder:
             kwargs = use_kwargs
             from_coder.ok_to_warm_cache = False
 
+        # Handle editor variants by detecting "editor-" prefix and setting editor_mode
+        editor_mode = False
+        base_format = edit_format
+        if edit_format and edit_format.startswith("editor-"):
+            editor_mode = True
+            base_format = edit_format[7:]  # Remove "editor-" prefix
+            kwargs["editor_mode"] = True
+
         for coder in coders.__all__:
-            if hasattr(coder, "edit_format") and coder.edit_format == edit_format:
+            if hasattr(coder, "edit_format") and coder.edit_format == base_format:
                 res = coder(main_model, io, **kwargs)
                 res.original_kwargs = dict(kwargs)
                 return res
