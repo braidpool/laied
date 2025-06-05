@@ -188,8 +188,10 @@ For help and documentation: https://aider.chat/docs/
     # Configuration validation and help
     parser.add_argument(
         "--list-models",
-        action="store_true",
-        help="List available models from configuration and exit"
+        metavar="MODEL",
+        nargs="?",
+        const="",
+        help="List known models which match the (partial) MODEL name, or all if no MODEL given"
     )
 
     parser.add_argument(
