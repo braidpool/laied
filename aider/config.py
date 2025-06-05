@@ -316,7 +316,7 @@ class AiderConfig:
 class ConfigManager:
     """Manages loading and saving of aider configuration."""
     
-    DEFAULT_CONFIG_NAMES = [".aider.yml", ".aider.yaml"]
+    DEFAULT_CONFIG_NAMES = [".laied.conf.yml", ".laied.conf.yaml"]
     
     def __init__(self):
         self.config_path = None
@@ -415,7 +415,7 @@ class ConfigManager:
         elif self.config_path:
             config_path = self.config_path
         else:
-            config_path = Path.cwd() / ".aider.yml"
+            config_path = Path.cwd() / ".laied.conf.yml"
         
         # Convert to dictionary
         config_dict = self._config_to_dict(config)
@@ -488,7 +488,7 @@ class ConfigManager:
         if path:
             config_path = Path(path)
         else:
-            config_path = Path.cwd() / ".aider.yml"
+            config_path = Path.cwd() / ".laied.conf.yml"
         
         if include_env_vars:
             # Create config with detected environment variables

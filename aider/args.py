@@ -23,7 +23,7 @@ def get_parser(default_config_files=None, git_root=None):
         description="aider is AI pair programming in your terminal",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Most configuration is now handled through .aider.yml files.
+Most configuration is now handled through .laied.conf.yml files.
 Use 'aider --init-config' to create a sample configuration file.
 
 For help and documentation: https://aider.chat/docs/
@@ -49,20 +49,20 @@ For help and documentation: https://aider.chat/docs/
     parser.add_argument(
         "--init-config",
         action="store_true",
-        help="Create a sample .aider.yml configuration file and exit"
+        help="Create a sample .laied.conf.yml configuration file and exit"
     )
 
     parser.add_argument(
         "--update-config",
         action="store_true",
-        help="Update existing .aider.yml configuration file with newly discovered models and exit"
+        help="Update existing .laied.conf.yml configuration file with newly discovered models and exit"
     )
 
     parser.add_argument(
         "-c",
         "--config",
         metavar="CONFIG_FILE",
-        help="Specify the config file (default: search for .aider.yml)"
+        help="Specify the config file (default: search for .laied.conf.yml)"
     ).complete = shtab.FILE
 
     # Most common model arguments for backwards compatibility

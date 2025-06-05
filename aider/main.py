@@ -462,7 +462,7 @@ def display_config_info(args, default_config_files):
                 config_file_used = str(config_path)
                 break
     
-    # Check for .aider.yml files too
+    # Check for .laied.conf.yml files too
     if not config_file_used:
         search_paths = [Path.cwd()]
         try:
@@ -474,7 +474,7 @@ def display_config_info(args, default_config_files):
         search_paths.append(Path.home())
         
         for path in search_paths:
-            for config_name in [".aider.yml", ".aider.yaml"]:
+            for config_name in [".laied.conf.yml", ".laied.conf.yaml"]:
                 config_file = path / config_name
                 if config_file.exists():
                     config_file_used = str(config_file)
@@ -497,7 +497,7 @@ def display_config_info(args, default_config_files):
                 print("⚠️  Environment variable conflicts detected:")
                 for conflict in conflicts:
                     print(f"   {conflict}")
-                print("   Consider updating your .aider.yml file or removing conflicting environment variables.")
+                print("   Consider updating your .laied.conf.yml file or removing conflicting environment variables.")
         except Exception:
             # If we can't load the new config system, just continue
             pass
@@ -554,7 +554,7 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
     else:
         git_root = get_git_root()
 
-    conf_fname = Path(".aider.conf.yml")
+    conf_fname = Path(".laied.conf.yml")
 
     default_config_files = []
     try:
