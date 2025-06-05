@@ -892,6 +892,22 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             alias, model = parts
             models.MODEL_ALIASES[alias.strip()] = model.strip()
 
+    # Load config file to get default model if no CLI model specified
+    if not args.model:
+        try:
+            from aider.config import ConfigManager
+            config_manager = ConfigManager()
+            config_file = config_manager.find_config_file()
+            if config_file:
+                config = config_manager.load_config(config_file)
+                if config.model:
+                    args.model = config.model
+                    if args.verbose:
+                        io.tool_output(f"Using default model from config: {config.model}")
+        except Exception as e:
+            if args.verbose:
+                io.tool_output(f"Failed to load config for default model: {e}")
+
     selected_model_name = select_default_model(args, io, analytics)
     if not selected_model_name:
         # Error message and analytics event are handled within select_default_model
@@ -958,14 +974,10 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             
             # Resolve model name through config (handles aliases)
             resolved_model = config.resolve_model_name(args.model) or args.model
-            if "/" in resolved_model:
-                # Extract just the model name for Model class
-                model_name = resolved_model.split("/", 1)[1]
-            else:
-                model_name = resolved_model
             
+            # Use the full resolved model name (including provider prefix for LiteLLM)
             main_model = models.Model(
-                model_name,
+                resolved_model,
                 weak_model=args.weak_model,
                 editor_model=args.editor_model,
                 editor_edit_format=args.editor_edit_format,
