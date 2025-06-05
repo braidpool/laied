@@ -503,7 +503,20 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
     # Parse again to include any arguments that might have been defined in .env
     args = parser.parse_args(argv)
 
-    if args.shell_completions:
+    # Handle --init-config early
+    if hasattr(args, 'init_config') and args.init_config:
+        from aider.config import create_sample_config
+        try:
+            config_path = create_sample_config()
+            print(f"Created sample configuration file: {config_path}")
+            print("\nEdit this file to configure your API keys and preferences.")
+            print("Documentation: https://aider.chat/docs/config/")
+        except Exception as e:
+            print(f"Error creating configuration file: {e}", file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)
+
+    if hasattr(args, 'shell_completions') and args.shell_completions:
         # Ensure parser.prog is set for shtab, though it should be by default
         parser.prog = "aider"
         print(shtab.complete(parser, shell=args.shell_completions))

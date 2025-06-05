@@ -418,77 +418,71 @@ class ConfigManager:
         return result
 
     def create_sample_config(self, path: Optional[Union[str, Path]] = None) -> Path:
-        """Create a sample configuration file."""
+        """Create a sample configuration file by copying the sample template."""
         if path:
             config_path = Path(path)
         else:
             config_path = Path.cwd() / ".aider.yml"
         
-        sample_config = self._create_sample_config_dict()
+        # Find the sample file in the aider package
+        import aider
+        aider_dir = Path(aider.__file__).parent.parent
+        sample_file = aider_dir / "aider.yml.sample"
         
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.dump(sample_config, f, default_flow_style=False, sort_keys=False)
+        if sample_file.exists():
+            # Copy the sample file
+            import shutil
+            shutil.copy2(sample_file, config_path)
+        else:
+            # Fallback to creating a basic config
+            self._create_basic_config_file(config_path)
         
         return config_path
 
-    def _create_sample_config_dict(self) -> Dict[str, Any]:
-        """Create a sample configuration dictionary with comments."""
-        return {
-            'providers': {
-                'openai_main': {
-                    'type': 'openai',
-                    'api_key': 'sk-your-openai-key-here',
-                    'base_url': 'https://api.openai.com/v1',
-                    'models': ['gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo']
-                },
-                'local_ollama': {
-                    'type': 'ollama',
-                    'base_url': 'http://localhost:11434',
-                    'models': ['llama3:8b', 'codellama:7b', 'mistral:7b']
-                },
-                'anthropic_main': {
-                    'type': 'anthropic',
-                    'api_key': 'sk-ant-your-key-here',
-                    'models': ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022']
-                }
-            },
-            'model_aliases': {
-                'sonnet': 'anthropic_main/claude-3-5-sonnet-20241022',
-                'gpt4': 'openai_main/gpt-4',
-                'local-llama': 'local_ollama/llama3:8b'
-            },
-            'model': 'sonnet',
-            'weak_model': 'openai_main/gpt-3.5-turbo',
-            'editor_model': 'local_ollama/codellama:7b',
-            'model_settings': {
-                'openai_main/gpt-4': {
-                    'max_tokens': 4096,
-                    'temperature': 0.1
-                },
-                'local_ollama/*': {
-                    'temperature': 0.0,
-                    'stream': True
-                }
-            },
-            'git': {
-                'auto_commits': True,
-                'commit_prefix': 'aider: '
-            },
-            'output': {
-                'user_input_color': '#00cc00',
-                'pretty': True,
-                'stream': True
-            },
-            'cache': {
-                'cache_prompts': False
-            },
-            'repomap': {
-                'map_tokens': 1024,
-                'repo_map': True
-            },
-            'edit_format': 'diff',
-            'vim': False
-        }
+    def _create_basic_config_file(self, config_path: Path):
+        """Create a basic configuration file if sample is not available."""
+        basic_config = """# Aider Configuration File
+# Copy this to .aider.yml and customize as needed
+
+providers:
+  openai_main:
+    type: openai
+    api_key: "sk-your-openai-key-here"
+    base_url: "https://api.openai.com/v1"
+    models: ["gpt-4", "gpt-4o", "gpt-3.5-turbo"]
+    
+  anthropic_main:
+    type: anthropic
+    api_key: "sk-ant-your-key-here"
+    models: ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"]
+    
+  local_ollama:
+    type: ollama
+    base_url: "http://localhost:11434"
+    models: ["llama3:8b", "codellama:7b"]
+
+model_aliases:
+  sonnet: "anthropic_main/claude-3-5-sonnet-20241022"
+  gpt4: "openai_main/gpt-4"
+  gpt4o: "openai_main/gpt-4o"
+
+model: "sonnet"
+weak_model: "openai_main/gpt-3.5-turbo"
+
+git:
+  auto_commits: true
+  commit_prefix: "aider: "
+
+output:
+  user_input_color: "#00cc00"
+  pretty: true
+  stream: true
+
+edit_format: "diff"
+vim: false
+"""
+        with open(config_path, 'w', encoding='utf-8') as f:
+            f.write(basic_config)
 
 
 # Global configuration manager instance
