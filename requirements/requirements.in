@@ -14,7 +14,9 @@ beautifulsoup4
 PyYAML
 diff-match-patch
 pypandoc
-litellm
+openai
+anthropic
+tiktoken
 flake8
 importlib_resources
 pyperclip

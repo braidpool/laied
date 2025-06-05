@@ -28,7 +28,6 @@ from aider.copypaste import ClipboardWatcher
 from aider.format_settings import format_settings, scrub_sensitive_info
 from aider.history import ChatSummary
 from aider.io import InputOutput
-from aider.llm import litellm  # noqa: F401; properly init litellm on launch
 from aider.models import ModelSettings
 from aider.onboarding import offer_openrouter_oauth, select_default_model
 from aider.repo import ANY_GIT_ERROR, GitRepo

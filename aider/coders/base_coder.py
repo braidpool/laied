@@ -31,11 +31,10 @@ from rich.console import Console
 from aider import __version__, models, prompts, urls, utils
 from aider.analytics import Analytics
 from aider.commands import Commands
-from aider.exceptions import LiteLLMExceptions
+from aider.providers import ProviderError
 from aider.history import ChatSummary
 from aider.io import ConfirmGroup, InputOutput
 from aider.linter import Linter
-from aider.llm import litellm
 from aider.models import RETRY_TIMEOUT
 from aider.reasoning_tags import (
     REASONING_TAG,
@@ -1454,24 +1453,22 @@ class Coder:
 
         retry_delay = 0.125
 
-        litellm_ex = LiteLLMExceptions()
-
         self.usage_report = None
         exhausted = False
         interrupted = False
+        retry_count = 0
         try:
             while True:
                 try:
                     yield from self.send(messages, functions=self.functions)
                     break
-                except litellm_ex.exceptions_tuple() as err:
-                    ex_info = litellm_ex.get_ex_info(err)
-
-                    if ex_info.name == "ContextWindowExceededError":
+                except ProviderError as err:
+                    # Check if this is a context window exceeded error
+                    if "context" in str(err).lower() and "exceed" in str(err).lower():
                         exhausted = True
                         break
 
-                    should_retry = ex_info.retry
+                    should_retry = err.retry and retry_count < 3
                     if should_retry:
                         retry_delay *= 2
                         if retry_delay > RETRY_TIMEOUT:
@@ -1479,18 +1476,15 @@ class Coder:
 
                     if not should_retry:
                         self.mdstream = None
-                        self.check_and_open_urls(err, ex_info.description)
+                        self.check_and_open_urls(err, str(err))
                         break
 
                     err_msg = str(err)
-                    if ex_info.description:
-                        self.io.tool_warning(err_msg)
-                        self.io.tool_error(ex_info.description)
-                    else:
-                        self.io.tool_error(err_msg)
+                    self.io.tool_error(err_msg)
 
                     self.io.tool_output(f"Retrying in {retry_delay:.1f} seconds...")
                     time.sleep(retry_delay)
+                    retry_count += 1
                     continue
                 except KeyboardInterrupt:
                     interrupted = True
@@ -1816,9 +1810,8 @@ class Coder:
             # Calculate costs for successful responses
             self.calculate_and_show_tokens_and_cost(messages, completion)
 
-        except LiteLLMExceptions().exceptions_tuple() as err:
-            ex_info = LiteLLMExceptions().get_ex_info(err)
-            if ex_info.name == "ContextWindowExceededError":
+        except ProviderError as err:
+            if "context" in str(err).lower() and "exceed" in str(err).lower():
                 # Still calculate costs for context window errors
                 self.calculate_and_show_tokens_and_cost(messages, completion)
             raise

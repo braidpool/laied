@@ -18,7 +18,7 @@ from PIL import Image
 
 from aider import __version__
 from aider.dump import dump  # noqa: F401
-from aider.llm import litellm
+from aider.providers import provider_manager
 from aider.openrouter import OpenRouterModelManager
 from aider.sendchat import ensure_alternating_roles, sanity_check_messages
 from aider.utils import check_pip_install_extra
@@ -238,16 +238,16 @@ class ModelInfoManager:
     def get_model_info(self, model):
         cached_info = self.get_model_from_cached_json_db(model)
 
-        litellm_info = None
-        if litellm._lazy_module or not cached_info:
+        provider_info = None
+        if not cached_info:
             try:
-                litellm_info = litellm.get_model_info(model)
+                provider_info = provider_manager.get_model_info(model)
             except Exception as ex:
                 if "model_prices_and_context_window.json" not in str(ex):
                     print(str(ex))
 
-        if litellm_info:
-            return litellm_info
+        if provider_info:
+            return provider_info
 
         if not cached_info and model.startswith("openrouter/"):
             # First try using the locally cached OpenRouter model database
@@ -619,18 +619,15 @@ class Model(ModelSettings):
         return self.editor_model
 
     def tokenizer(self, text):
-        return litellm.encode(model=self.name, text=text)
+        return provider_manager.tokenize(text=text, model=self.name)
 
     def token_count(self, messages):
         if type(messages) is list:
             try:
-                return litellm.token_counter(model=self.name, messages=messages)
+                return provider_manager.count_tokens(messages=messages, model=self.name)
             except Exception as err:
                 print(f"Unable to count tokens: {err}")
                 return 0
-
-        if not self.tokenizer:
-            return
 
         if type(messages) is str:
             msgs = messages
@@ -638,7 +635,8 @@ class Model(ModelSettings):
             msgs = json.dumps(messages)
 
         try:
-            return len(self.tokenizer(msgs))
+            tokens = self.tokenizer(msgs)
+            return len(tokens)
         except Exception as err:
             print(f"Unable to count tokens: {err}")
             return 0
@@ -722,7 +720,7 @@ class Model(ModelSettings):
         # https://github.com/BerriAI/litellm/issues/3190
 
         model = self.name
-        res = litellm.validate_environment(model)
+        res = provider_manager.validate_environment(model)
 
         # If missing AWS credential keys but AWS_PROFILE is set, consider AWS credentials valid
         if res["missing_keys"] and any(
@@ -998,13 +996,12 @@ class Model(ModelSettings):
 
             self.github_copilot_token_to_open_ai_key(kwargs["extra_headers"])
 
-        res = litellm.completion(**kwargs)
+        res = provider_manager.completion(**kwargs)
         return hash_object, res
 
     def simple_send_with_retries(self, messages):
-        from aider.exceptions import LiteLLMExceptions
+        from aider.providers import ProviderError
 
-        litellm_ex = LiteLLMExceptions()
         if "deepseek-reasoner" in self.name:
             messages = ensure_alternating_roles(messages)
         retry_delay = 0.125
@@ -1012,6 +1009,7 @@ class Model(ModelSettings):
         if self.verbose:
             dump(messages)
 
+        retry_count = 0
         while True:
             try:
                 kwargs = {
@@ -1028,12 +1026,9 @@ class Model(ModelSettings):
 
                 return remove_reasoning_content(res, self.reasoning_tag)
 
-            except litellm_ex.exceptions_tuple() as err:
-                ex_info = litellm_ex.get_ex_info(err)
+            except ProviderError as err:
                 print(str(err))
-                if ex_info.description:
-                    print(ex_info.description)
-                should_retry = ex_info.retry
+                should_retry = err.retry and retry_count < 3
                 if should_retry:
                     retry_delay *= 2
                     if retry_delay > RETRY_TIMEOUT:
@@ -1042,6 +1037,7 @@ class Model(ModelSettings):
                     return None
                 print(f"Retrying in {retry_delay:.1f} seconds...")
                 time.sleep(retry_delay)
+                retry_count += 1
                 continue
             except AttributeError:
                 return None

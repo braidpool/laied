@@ -58,11 +58,11 @@ markupsafe==3.0.2
     # via
     #   -c requirements/common-constraints.txt
     #   jinja2
-narwhals==1.41.0
+narwhals==1.41.1
     # via
     #   -c requirements/common-constraints.txt
     #   altair
-numpy==1.26.4
+numpy==2.2.6
     # via
     #   -c requirements/common-constraints.txt
     #   pandas

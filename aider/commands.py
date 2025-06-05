@@ -17,7 +17,7 @@ from aider import models, prompts, voice
 from aider.editor import pipe_editor
 from aider.format_settings import format_settings
 from aider.io import CommandCompletionException
-from aider.llm import litellm
+from aider.providers import ProviderError
 from aider.repo import ANY_GIT_ERROR
 from aider.run_cmd import run_cmd
 from aider.scrape import Scraper, install_playwright
@@ -215,7 +215,11 @@ class Commands:
         )
 
     def completions_model(self):
-        models = litellm.model_cost.keys()
+        # Return a basic list of known models
+        models = [
+            "gpt-4o", "gpt-4", "gpt-3.5-turbo", "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-20241022", "ollama/llama3", "ollama/codellama"
+        ]
         return models
 
     def cmd_models(self, args):
@@ -1219,7 +1223,7 @@ You can also:
 
         try:
             text = self.voice.record_and_transcribe(None, language=self.voice_language)
-        except litellm.OpenAIError as err:
+        except ProviderError as err:
             self.io.tool_error(f"Unable to use OpenAI whisper model: {err}")
             return
 
