@@ -1496,13 +1496,225 @@ def _query_ollama_available_models(base_url):
 
 
 def print_matching_models(io, search):
+    """Print a nicely formatted table of models with metadata and deduplication."""
     matches = fuzzy_match_models(search)
-    if matches:
-        io.tool_output(f'Models which match "{search}":')
-        for model in matches:
-            io.tool_output(f"- {model}")
-    else:
+    if not matches:
         io.tool_output(f'No models match "{search}".')
+        return
+    
+    # Load config to get aliases and provider info
+    try:
+        from aider.config import ConfigManager
+        config_manager = ConfigManager()
+        config_path = config_manager.find_config_file()
+        config = None
+        if config_path:
+            config = config_manager.load_config(config_path)
+    except Exception:
+        config = None
+    
+    # Organize models and aliases
+    aliases = {}
+    provider_models = {}
+    reverse_aliases = {}  # model -> [aliases]
+    
+    if config:
+        # Get aliases
+        aliases = config.model_aliases or {}
+        # Create reverse mapping for alias lookup
+        for alias, target in aliases.items():
+            if target not in reverse_aliases:
+                reverse_aliases[target] = []
+            reverse_aliases[target].append(alias)
+        
+        # Organize by provider
+        for endpoint_name, provider in config.providers.items():
+            if provider.models:
+                provider_models[endpoint_name] = {
+                    'type': provider.type,
+                    'models': set(provider.models),
+                    'endpoint': endpoint_name
+                }
+    
+    io.tool_output(f'Models which match "{search}":')
+    io.tool_output()
+    
+    # Show models grouped by provider in table format
+    if provider_models:
+        for endpoint_name, provider_info in sorted(provider_models.items()):
+            provider_matches = []
+            for model in provider_info['models']:
+                fq_model = f"{endpoint_name}/{model}"
+                if (fq_model in matches or model in matches):
+                    if search.lower() in model.lower() or search.lower() in fq_model.lower():
+                        provider_matches.append(model)
+            
+            if provider_matches:
+                provider_type = provider_info['type'].title()
+                endpoint_desc = f" ({endpoint_name})" if endpoint_name != provider_info['type'] else ""
+                io.tool_output(f"**{provider_type}{endpoint_desc}:**")
+                
+                # Create table
+                _print_models_table(io, provider_matches, provider_info['type'], reverse_aliases, endpoint_name, config_manager)
+                io.tool_output()
+
+def _print_models_table(io, models, provider_type, reverse_aliases, endpoint_name, config_manager=None):
+    """Print a formatted table of models."""
+    # Prepare table data
+    table_data = []
+    
+    for model in sorted(models):
+        fq_model = f"{endpoint_name}/{model}"
+        
+        # Get description (try to get from API metadata first)
+        description = _get_model_description(model, provider_type, config_manager)
+        
+        # Get aliases for this model
+        model_aliases = []
+        if fq_model in reverse_aliases:
+            model_aliases.extend(reverse_aliases[fq_model])
+        if model in reverse_aliases:
+            model_aliases.extend(reverse_aliases[model])
+        
+        alias_str = ", ".join(sorted(set(model_aliases))) if model_aliases else ""
+        
+        table_data.append({
+            'name': model,
+            'description': description,
+            'aliases': alias_str
+        })
+    
+    if not table_data:
+        return
+    
+    # Calculate column widths
+    max_name = max(len(row['name']) for row in table_data)
+    max_desc = max(len(row['description']) for row in table_data)
+    max_aliases = max(len(row['aliases']) for row in table_data)
+    
+    # Ensure minimum widths and reasonable maximums  
+    name_width = max(12, min(max_name + 2, 35))
+    desc_width = max(15, min(max_desc + 2, 50))
+    alias_width = max(8, min(max_aliases + 2, 25))
+    
+    # Print table header
+    header = f"│ {'Name':<{name_width}} │ {'Description':<{desc_width}} │ {'Aliases':<{alias_width}} │"
+    separator = f"├─{'─' * name_width}─┼─{'─' * desc_width}─┼─{'─' * alias_width}─┤"
+    top_border = f"┌─{'─' * name_width}─┬─{'─' * desc_width}─┬─{'─' * alias_width}─┐"
+    bottom_border = f"└─{'─' * name_width}─┴─{'─' * desc_width}─┴─{'─' * alias_width}─┘"
+    
+    io.tool_output(top_border)
+    io.tool_output(header)
+    io.tool_output(separator)
+    
+    # Print table rows
+    for i, row in enumerate(table_data):
+        # Truncate if too long
+        name = row['name'][:name_width].ljust(name_width)
+        desc = row['description'][:desc_width].ljust(desc_width)
+        aliases = row['aliases'][:alias_width].ljust(alias_width)
+        
+        io.tool_output(f"│ {name} │ {desc} │ {aliases} │")
+    
+    io.tool_output(bottom_border)
+
+def _get_model_description(model_name: str, provider_type: str, config_manager=None) -> str:
+    """Get a human-readable description for a model."""
+    # Try to get live Anthropic display name
+    if provider_type == 'anthropic':
+        anthropic_display_name = _get_anthropic_display_name(model_name, config_manager)
+        if anthropic_display_name:
+            return anthropic_display_name
+    
+    descriptions = {
+        # OpenAI models
+        'gpt-4o': 'GPT-4 Omni - latest multimodal model',
+        'gpt-4': 'GPT-4 - advanced reasoning',
+        'gpt-3.5-turbo': 'GPT-3.5 Turbo - fast and efficient',
+        'o1-preview': 'O1 Preview - advanced reasoning',
+        'o1-mini': 'O1 Mini - lightweight reasoning',
+        
+        # Anthropic models
+        'claude-sonnet-4-20250514': 'Claude 4 Sonnet - latest and most capable',
+        'claude-opus-4-20250514': 'Claude 4 Opus - maximum intelligence',
+        'claude-3-5-sonnet-20241022': 'Claude 3.5 Sonnet - balanced performance',
+        'claude-3-5-haiku-20241022': 'Claude 3.5 Haiku - fast and efficient',
+        
+        # Groq models
+        'llama-3.1-8b-instant': 'Llama 3.1 8B - fast inference',
+        'llama-3.3-70b-versatile': 'Llama 3.3 70B - versatile large model',
+        
+        # Deepseek models
+        'deepseek-chat': 'Deepseek Chat - general conversation',
+        'deepseek-reasoner': 'Deepseek Reasoner - advanced reasoning',
+        
+        # Gemini models
+        'gemini-2.5-pro': 'Gemini 2.5 Pro - most advanced',
+        'gemini-1.5-pro': 'Gemini 1.5 Pro - multimodal',
+        'gemini-1.5-flash': 'Gemini 1.5 Flash - fast responses',
+    }
+    
+    # Try exact match first
+    if model_name in descriptions:
+        return descriptions[model_name]
+    
+    # Try pattern matching for versioned models
+    base_name = model_name.split('-')[0] + '-' + model_name.split('-')[1] if '-' in model_name else model_name
+    if base_name in descriptions:
+        return descriptions[base_name]
+    
+    # Provider-specific patterns
+    if provider_type == 'ollama':
+        if 'qwen' in model_name.lower():
+            return 'Qwen model for local inference'
+        elif 'gemma' in model_name.lower():
+            return 'Google Gemma model'
+        elif 'phi' in model_name.lower():
+            return 'Microsoft Phi model'
+        elif 'llama' in model_name.lower():
+            return 'Meta Llama model'
+    
+    return ""
+
+def _get_anthropic_display_name(model_name: str, config_manager=None) -> str:
+    """Get live display name from Anthropic API."""
+    if not config_manager:
+        return ""
+    
+    try:
+        # Get Anthropic API key from config
+        config = config_manager.load_config()
+        if not config or 'anthropic' not in config.providers:
+            return ""
+        
+        anthropic_provider = config.providers['anthropic']
+        api_key = anthropic_provider.api_key
+        if not api_key:
+            return ""
+        
+        import requests
+        headers = {
+            'x-api-key': api_key,
+            'Content-Type': 'application/json',
+            'anthropic-version': '2023-06-01'
+        }
+        
+        # Query Anthropic API (with caching to avoid repeated calls)
+        if not hasattr(_get_anthropic_display_name, '_cache'):
+            response = requests.get('https://api.anthropic.com/v1/models', headers=headers, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                _get_anthropic_display_name._cache = {
+                    model['id']: model.get('display_name', '') 
+                    for model in data.get('data', [])
+                }
+            else:
+                _get_anthropic_display_name._cache = {}
+        
+        return _get_anthropic_display_name._cache.get(model_name, "")
+        
+    except Exception:
+        return ""
 
 
 def get_model_settings_as_yaml():

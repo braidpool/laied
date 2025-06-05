@@ -517,13 +517,15 @@ class ConfigManager:
         # Load existing configuration
         existing_config = self.load_config(config_path)
         
-        # Convert providers to dict format for interrogation
+        # Convert providers to dict format for interrogation (preserve endpoint names)
         provider_configs = {}
         for name, provider in existing_config.providers.items():
-            provider_configs[provider.type] = {
+            provider_configs[name] = {
                 'type': provider.type,
                 'api_key': provider.api_key,
-                'base_url': provider.base_url
+                'base_url': provider.base_url or (
+                    'https://api.openai.com/v1' if provider.type == 'openai' else None
+                )
             }
         
         # Interrogate endpoints for new models
@@ -533,9 +535,8 @@ class ConfigManager:
             
             # Update the existing config with new models
             for name, provider in existing_config.providers.items():
-                provider_type = provider.type
-                if provider_type in updated_providers and 'models' in updated_providers[provider_type]:
-                    new_models = updated_providers[provider_type]['models']
+                if name in updated_providers and 'models' in updated_providers[name]:
+                    new_models = updated_providers[name]['models']
                     old_models = provider.models or []
                     provider.models = new_models
                     print(f"  Updated {name}: {len(old_models)} -> {len(new_models)} models")
@@ -551,11 +552,17 @@ class ConfigManager:
         import time
         import json
         
-        for provider_type, config in detected_providers.items():
-            if 'api_key' not in config:
-                continue  # Skip providers without API keys
+        # Initialize metadata storage
+        self._model_metadata = {}
+        
+        for endpoint_name, config in detected_providers.items():
+            provider_type = config.get('type', endpoint_name)
+            
+            # Skip providers that require API keys but don't have them
+            if provider_type not in ['ollama'] and 'api_key' not in config:
+                continue
                 
-            print(f"Discovering models for {provider_type}...")
+            print(f"Discovering models for {endpoint_name}...")
             
             try:
                 models = self._query_provider_models(provider_type, config)
@@ -563,10 +570,10 @@ class ConfigManager:
                     config['models'] = models
                     print(f"  Found {len(models)} models")
                 else:
-                    print(f"  No models discovered for {provider_type} (API may be unavailable)")
+                    print(f"  No models discovered for {endpoint_name} (API may be unavailable)")
                     config['models'] = []
             except Exception as e:
-                print(f"  Model discovery failed for {provider_type}: {e}")
+                print(f"  Model discovery failed for {endpoint_name}: {e}")
                 config['models'] = []
             
             # Small delay to avoid rate limiting
@@ -659,23 +666,46 @@ class ConfigManager:
         return []
 
     def _query_anthropic_models(self, config: Dict[str, str]) -> List[str]:
-        """Query Anthropic API for available models (Claude models are well-known)."""
-        # Anthropic doesn't have a public models endpoint, so we use comprehensive known models
+        """Query Anthropic API for available models with display names."""
+        import requests
+        
+        api_key = config.get('api_key')
+        if not api_key:
+            return []
+        
+        headers = {
+            'x-api-key': api_key,
+            'Content-Type': 'application/json',
+            'anthropic-version': '2023-06-01'
+        }
+        
+        try:
+            response = requests.get('https://api.anthropic.com/v1/models', headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                models = []
+                for model in data.get('data', []):
+                    model_id = model['id']
+                    models.append(model_id)
+                    # Store display name for later use
+                    if hasattr(self, '_model_metadata'):
+                        self._model_metadata[model_id] = {
+                            'display_name': model.get('display_name'),
+                            'created_at': model.get('created_at')
+                        }
+                return models
+        except Exception:
+            pass
+        
+        # Fallback to known models if API fails
         return [
-            # Claude 4 series (2025)
             "claude-sonnet-4-20250514",
-            "claude-opus-4-20250514",
-            # Claude 3.5 series
+            "claude-opus-4-20250514", 
             "claude-3-5-sonnet-20241022",
-            "claude-3-5-sonnet-20240620",
             "claude-3-5-haiku-20241022",
-            # Claude 3 series
             "claude-3-opus-20240229",
             "claude-3-sonnet-20240229",
-            "claude-3-haiku-20240307",
-            # Claude 2 series (legacy)
-            "claude-2.1",
-            "claude-2"
+            "claude-3-haiku-20240307"
         ]
 
     def _query_groq_models(self, config: Dict[str, str]) -> List[str]:
@@ -815,6 +845,25 @@ class ConfigManager:
                     detected_providers[provider_type] = {'type': provider_type}
                 detected_providers[provider_type][setting] = value
         
+        # Always include ollama endpoints
+        # First try OLLAMA_HOST if set
+        ollama_host = os.getenv('OLLAMA_HOST')
+        if ollama_host and 'ollama' not in detected_providers:
+            detected_providers['ollama'] = {
+                'type': 'ollama',
+                'base_url': ollama_host
+            }
+        
+        # Always try localhost:11434 as well (as separate endpoint if different)
+        localhost_url = 'http://localhost:11434'
+        if 'ollama' not in detected_providers or detected_providers.get('ollama', {}).get('base_url') != localhost_url:
+            # Add localhost as primary or secondary ollama endpoint
+            endpoint_name = 'ollama' if 'ollama' not in detected_providers else 'ollama_local'
+            detected_providers[endpoint_name] = {
+                'type': 'ollama', 
+                'base_url': localhost_url
+            }
+        
         # Interrogate endpoints for models
         if detected_providers:
             print("Discovering available models from API endpoints...")
@@ -837,8 +886,8 @@ class ConfigManager:
         if detected_providers:
             content += "providers:\n"
             
-            for provider_type, config in detected_providers.items():
-                endpoint_name = provider_type  # Use simple provider name, not provider_type_main
+            for endpoint_name, config in detected_providers.items():
+                provider_type = config.get('type', endpoint_name)
                 content += f"  {endpoint_name}:\n"
                 content += f"    type: {provider_type}\n"
                 

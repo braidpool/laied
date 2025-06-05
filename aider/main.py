@@ -25,7 +25,6 @@ from aider.coders import Coder
 from aider.coders.base_coder import UnknownEditFormat
 from aider.commands import Commands, SwitchCoder
 from aider.copypaste import ClipboardWatcher
-from aider.deprecated import handle_deprecated_model_args
 from aider.format_settings import format_settings, scrub_sensitive_info
 from aider.history import ChatSummary
 from aider.io import InputOutput
@@ -737,8 +736,6 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
     if args.openai_api_key:
         os.environ["OPENAI_API_KEY"] = args.openai_api_key
 
-    # Handle deprecated model shortcut args
-    handle_deprecated_model_args(args, io)
     if args.openai_api_base:
         os.environ["OPENAI_API_BASE"] = args.openai_api_base
     if args.openai_api_version:
@@ -940,25 +937,53 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             )
             return 1
 
-    # Use ConfigBridge to properly resolve model names from config files
-    from aider.config_bridge import config_bridge
-    
+    # Create model with unified config system if available, otherwise use legacy
+    config_file = None
     try:
-        # Initialize the config bridge with current args
-        config_bridge.load_configuration()
-        
-        # Create the main model using the config-aware system
-        main_model = config_bridge.create_model(
-            args.model,
-            weak_model=args.weak_model,
-            editor_model=args.editor_model,
-            editor_edit_format=args.editor_edit_format,
-            verbose=args.verbose,
-        )
-    except Exception as e:
-        # Fallback to direct Model creation if config bridge fails
-        if args.verbose:
-            io.tool_output(f"Config bridge failed, using legacy model creation: {e}")
+        from aider.config import ConfigManager
+        config_manager = ConfigManager()
+        config_file = config_manager.find_config_file()
+    except Exception:
+        pass
+    
+    if config_file:
+        # Use new unified config system with endpoint-aware model management
+        try:
+            from aider.config import ConfigManager
+            from aider.models import endpoint_model_manager
+            
+            config_manager = ConfigManager()
+            config = config_manager.load_config(config_file)
+            endpoint_model_manager.set_config(config)
+            
+            # Resolve model name through config (handles aliases)
+            resolved_model = config.resolve_model_name(args.model) or args.model
+            if "/" in resolved_model:
+                # Extract just the model name for Model class
+                model_name = resolved_model.split("/", 1)[1]
+            else:
+                model_name = resolved_model
+            
+            main_model = models.Model(
+                model_name,
+                weak_model=args.weak_model,
+                editor_model=args.editor_model,
+                editor_edit_format=args.editor_edit_format,
+                verbose=args.verbose,
+            )
+        except Exception as e:
+            if args.verbose:
+                io.tool_output(f"New config system failed, using legacy model creation: {e}")
+            # Fallback to legacy model creation
+            main_model = models.Model(
+                args.model,
+                weak_model=args.weak_model,
+                editor_model=args.editor_model,
+                editor_edit_format=args.editor_edit_format,
+                verbose=args.verbose,
+            )
+    else:
+        # Use legacy model creation (CLI args + env vars)
         main_model = models.Model(
             args.model,
             weak_model=args.weak_model,

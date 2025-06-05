@@ -10,7 +10,7 @@ def scrub_sensitive_info(args, text):
 
 
 def format_settings(parser, args):
-    show = scrub_sensitive_info(args, parser.format_values())
+    show = scrub_sensitive_info(args, parser.format_help())
     # clean up the headings for consistency w/ new lines
     heading_env = "Environment Variables:"
     heading_defaults = "Defaults:"
