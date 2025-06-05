@@ -598,11 +598,11 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
 
     # Handle --init-config early
     if hasattr(args, 'init_config') and args.init_config:
-        from aider.config import create_sample_config, discover_local_llm_servers
+        from aider.config import ConfigManager, discover_local_llm_servers
         from aider.io import InputOutput
         try:
             # Create a minimal IO object for user interaction during discovery
-            io = InputOutput(pretty=True, yes_always=False)
+            io = InputOutput(pretty=True, yes=False)
             
             # Discover local LLM servers before creating config (with user prompts)
             print("Scanning for local LLM servers and running processes...")
@@ -618,7 +618,8 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
                 print("No local LLM servers found.")
                 print()
             
-            config_path = create_sample_config(include_env_vars=True)
+            config_manager = ConfigManager()
+            config_path = config_manager.create_sample_config(path=None, include_env_vars=True)
             print(f"Created sample configuration file: {config_path}")
             print("\nEdit this file to configure your API keys and preferences.")
             print("Documentation: https://aider.chat/docs/config/")
@@ -635,7 +636,7 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             config_manager = ConfigManager()
             
             # Create a minimal IO object for user interaction during discovery
-            io = InputOutput(pretty=True, yes_always=False)
+            io = InputOutput(pretty=True, yes=False)
             
             # First, discover local LLM servers (with user prompts)
             print("Scanning for local LLM servers and running processes...")
@@ -722,11 +723,12 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
     editing_mode = EditingMode.VI if args.vim else EditingMode.EMACS
 
     def get_io(pretty):
+        from aider.io import InputOutput
         return InputOutput(
-            pretty,
-            args.yes_always,
-            args.input_history_file,
-            args.chat_history_file,
+            pretty=pretty,
+            yes=args.yes_always,
+            input_history_file=args.input_history_file,
+            chat_history_file=args.chat_history_file,
             input=input,
             output=output,
             user_input_color=args.user_input_color,

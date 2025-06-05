@@ -261,8 +261,14 @@ class AiderConfig:
             return None
         
         # Try to find a provider that supports this model
+        # First, prefer providers that explicitly have this model in their discovered models
         for endpoint_name, provider in self.providers.items():
-            if not provider.models or model_spec in provider.models:
+            if provider.models and model_spec in provider.models:
+                return f"{endpoint_name}/{model_spec}"
+        
+        # Fallback: try providers with no explicit model list (legacy support)
+        for endpoint_name, provider in self.providers.items():
+            if not provider.models:
                 return f"{endpoint_name}/{model_spec}"
         
         return None
@@ -950,14 +956,17 @@ class ConfigManager:
 
 """
         
-        content += """# Model aliases for convenience
-model_aliases:
-  sonnet: "anthropic/claude-3-5-sonnet-20241022"
-  gpt4o: "openai/gpt-4o"
-  gpt4: "openai/gpt-4"
+        # Generate model aliases and default model based on discovered providers
+        aliases_content = self._generate_model_aliases(detected_providers)
+        default_model = self._select_default_model(detected_providers)
+        
+        if aliases_content:
+            content += f"\n# Model aliases\nmodel_aliases:\n{aliases_content}\n"
+        
+        content += f"""
 
 # Default model to use
-model: "sonnet"
+model: "{default_model}"
 
 # Git settings
 git:
@@ -1024,6 +1033,104 @@ vim: false
 """
         with open(config_path, 'w', encoding='utf-8') as f:
             f.write(basic_config)
+
+    def _generate_model_aliases(self, detected_providers: Dict[str, Dict[str, str]]) -> str:
+        """Generate model aliases based on discovered providers. Only create aliases for common/useful models."""
+        aliases = []
+        
+        for endpoint_name, config in detected_providers.items():
+            provider_type = config.get('type', endpoint_name)
+            models = config.get('models', [])
+            
+            # Only create aliases for very common, well-known models
+            if provider_type == 'openai' and models:
+                if 'gpt-4o' in models:
+                    aliases.append(f'  gpt4o: "{endpoint_name}/gpt-4o"')
+                if 'gpt-4' in models:
+                    aliases.append(f'  gpt4: "{endpoint_name}/gpt-4"')
+                    
+            elif provider_type == 'anthropic' and models:
+                # Find the latest sonnet model
+                sonnet_models = [m for m in models if 'sonnet' in m.lower() and 'claude-3-5' in m.lower()]
+                if sonnet_models:
+                    # Use the latest one (they're typically sorted)
+                    latest_sonnet = sonnet_models[-1]
+                    aliases.append(f'  sonnet: "{endpoint_name}/{latest_sonnet}"')
+                    
+            elif provider_type == 'ollama' and models:
+                # For ollama, create aliases for very common local models
+                if any('llama' in m.lower() for m in models):
+                    llama_models = [m for m in models if 'llama' in m.lower()]
+                    if llama_models:
+                        aliases.append(f'  llama: "{endpoint_name}/{llama_models[0]}"')
+        
+        return '\n'.join(aliases) if aliases else ""
+
+    def _select_default_model(self, detected_providers: Dict[str, Dict[str, str]]) -> str:
+        """Select a sensible default model from discovered providers."""
+        
+        # Priority order for selecting default model
+        # 1. Anthropic Claude (if available)
+        # 2. OpenAI GPT-4o or GPT-4 (if available) 
+        # 3. Local Ollama models (if available)
+        # 4. Any other available model
+        # 5. Fallback to a reasonable default
+        
+        for endpoint_name, config in detected_providers.items():
+            provider_type = config.get('type', endpoint_name)
+            models = config.get('models', [])
+            
+            if not models:
+                continue
+                
+            # Prefer Anthropic Claude models
+            if provider_type == 'anthropic':
+                sonnet_models = [m for m in models if 'sonnet' in m.lower() and 'claude-3-5' in m.lower()]
+                if sonnet_models:
+                    return f"{endpoint_name}/{sonnet_models[-1]}"  # Latest sonnet
+                # Fallback to any claude model
+                claude_models = [m for m in models if m.startswith('claude-')]
+                if claude_models:
+                    return f"{endpoint_name}/{claude_models[0]}"
+        
+        # Second choice: OpenAI models
+        for endpoint_name, config in detected_providers.items():
+            provider_type = config.get('type', endpoint_name)
+            models = config.get('models', [])
+            
+            if provider_type == 'openai' and models:
+                if 'gpt-4o' in models:
+                    return f"{endpoint_name}/gpt-4o"
+                elif 'gpt-4' in models:
+                    return f"{endpoint_name}/gpt-4"
+                elif any('gpt-4' in m for m in models):
+                    gpt4_models = [m for m in models if 'gpt-4' in m]
+                    return f"{endpoint_name}/{gpt4_models[0]}"
+        
+        # Third choice: Local Ollama models (prefer smaller, efficient ones)
+        for endpoint_name, config in detected_providers.items():
+            provider_type = config.get('type', endpoint_name)
+            models = config.get('models', [])
+            
+            if provider_type == 'ollama' and models:
+                # Prefer lightweight models for local usage
+                preferred_local = ['qwen3:0.6b', 'qwen3:1.7b', 'gemma3:1b', 'phi4-mini']
+                for preferred in preferred_local:
+                    if any(preferred in m for m in models):
+                        matching = [m for m in models if preferred in m][0]
+                        return f"{endpoint_name}/{matching}"
+                
+                # Fallback to first available local model
+                return f"{endpoint_name}/{models[0]}"
+        
+        # Fourth choice: Any available model from any provider
+        for endpoint_name, config in detected_providers.items():
+            models = config.get('models', [])
+            if models:
+                return f"{endpoint_name}/{models[0]}"
+        
+        # Final fallback if no models found
+        return "claude-3-5-sonnet-20241022"
 
 
 def check_port_open(host: str, port: int, timeout: float = 2.0) -> bool:
@@ -1323,6 +1430,3 @@ def save_config(config: AiderConfig, config_path: Optional[Union[str, Path]] = N
     config_manager.save_config(config, config_path)
 
 
-def create_sample_config(path: Optional[Union[str, Path]] = None) -> Path:
-    """Create a sample configuration file."""
-    return config_manager.create_sample_config(path)

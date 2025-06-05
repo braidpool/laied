@@ -319,8 +319,19 @@ class Model(ModelSettings):
     def __init__(
         self, model, weak_model=None, editor_model=None, editor_edit_format=None, verbose=False
     ):
-        # Map any alias to its canonical name
-        model = MODEL_ALIASES.get(model, model)
+        # Use endpoint-aware model resolution if config is available
+        if endpoint_model_manager.config:
+            resolved_model, provider_config = endpoint_model_manager.resolve_model_spec(model)
+            if provider_config:
+                # Set up environment variables for this endpoint
+                endpoint_model_manager.setup_environment_for_model(model)
+                # Use the provider type + model name for LiteLLM compatibility
+                model = f"{provider_config.type}/{resolved_model}"
+            else:
+                model = resolved_model
+        else:
+            # Fallback to legacy alias resolution
+            model = MODEL_ALIASES.get(model, model)
 
         self.name = model
         self.verbose = verbose
