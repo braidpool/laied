@@ -158,10 +158,10 @@ For help and documentation: https://aider.chat/docs/
     )
 
     parser.add_argument(
-        "--no-pretty",
-        action="store_true",
-        help="Disable pretty, colorized output",
-        default=False
+        "--pretty",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable/disable pretty, colorized output (default: True)"
     )
 
     parser.add_argument(
@@ -255,6 +255,7 @@ For help and documentation: https://aider.chat/docs/
         completion_menu_current_color=None,
         completion_menu_current_bg_color=None,
         code_theme="default",
+        pretty=True,
         stream=True,
         show_diffs=False,
         show_model_warnings=True,
