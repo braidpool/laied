@@ -236,10 +236,25 @@ class ModelInfoManager:
         return dict()
 
     def get_model_info(self, model):
-        cached_info = self.get_model_from_cached_json_db(model)
-
+        # For dynamic/local models, always query the API first
+        is_dynamic_model = self._is_dynamic_model(model)
+        
         provider_info = None
-        if not cached_info:
+        if is_dynamic_model:
+            # For Ollama/LLamaCPP, always query live endpoint first
+            try:
+                provider_info = provider_manager.get_model_info(model)
+                if provider_info:
+                    return provider_info
+            except Exception as ex:
+                if "model_prices_and_context_window.json" not in str(ex):
+                    print(f"Warning: Could not query dynamic model info for {model}: {ex}")
+        
+        # Fallback to static cache for non-dynamic models or if API query failed
+        cached_info = self.get_model_from_cached_json_db(model)
+        
+        # For non-dynamic models, try provider API if no cached info
+        if not cached_info and not is_dynamic_model:
             try:
                 provider_info = provider_manager.get_model_info(model)
             except Exception as ex:
@@ -261,6 +276,24 @@ class ModelInfoManager:
                 return openrouter_info
 
         return cached_info
+
+    def _is_dynamic_model(self, model: str) -> bool:
+        """Check if model should use dynamic API queries instead of static metadata."""
+        model_lower = model.lower()
+        
+        # Ollama models
+        if any(pattern in model_lower for pattern in ["ollama", "llama", "mixtral", "mistral", "qwen", "phi", "gemma"]):
+            return True
+        
+        # LLamaCPP models (often served on localhost or custom ports)
+        if any(pattern in model for pattern in ["localhost", "127.0.0.1", ":8080", ":8000"]):
+            return True
+        
+        # Model names that typically indicate local/self-hosted models
+        if any(pattern in model_lower for pattern in ["vicuna", "alpaca", "orca", "wizard", "nous-"]):
+            return True
+        
+        return False
 
     def fetch_openrouter_model_info(self, model):
         """
@@ -358,6 +391,13 @@ class Model(ModelSettings):
         self.max_chat_history_tokens = min(max(max_input_tokens / 16, 1024), 8192)
 
         self.configure_model_settings(model)
+        
+        # Apply any configuration overrides
+        self._apply_config_overrides()
+        
+        # Display model parameters on startup if verbose
+        if verbose:
+            self._display_model_parameters()
         if weak_model is False:
             self.weak_model_name = None
         else:
@@ -1041,6 +1081,52 @@ class Model(ModelSettings):
                 continue
             except AttributeError:
                 return None
+
+    def _display_model_parameters(self):
+        """Display key model parameters on startup."""
+        print(f"\n=== Model Parameters for {self.name} ===")
+        
+        # Core capacity parameters
+        max_input = self.info.get("max_input_tokens", "unknown")
+        max_output = self.info.get("max_output_tokens", "unknown")
+        print(f"Max input tokens: {max_input:,}" if isinstance(max_input, int) else f"Max input tokens: {max_input}")
+        print(f"Max output tokens: {max_output:,}" if isinstance(max_output, int) else f"Max output tokens: {max_output}")
+        print(f"Max chat history tokens: {self.max_chat_history_tokens:,}")
+        
+        # Configuration parameters
+        if hasattr(self, 'use_temperature'):
+            if self.use_temperature is False:
+                print("Temperature: disabled")
+            elif isinstance(self.use_temperature, (int, float)):
+                print(f"Temperature: {self.use_temperature}")
+            else:
+                print("Temperature: default (model-dependent)")
+        
+        print(f"Streaming: {'enabled' if self.streaming else 'disabled'}")
+        print(f"System prompts: {'supported' if self.use_system_prompt else 'not supported'}")
+        print(f"Prompt caching: {'default' if self.caches_by_default else 'disabled'}")
+        
+        # Cost parameters
+        input_cost = self.info.get("input_cost_per_token", 0)
+        output_cost = self.info.get("output_cost_per_token", 0)
+        if input_cost > 0 or output_cost > 0:
+            print(f"Input cost: ${input_cost:.6f} per token")
+            print(f"Output cost: ${output_cost:.6f} per token")
+        else:
+            print("Cost: free/self-hosted")
+        
+        # Ollama-specific debugging info
+        if "_detected_context_size" in self.info:
+            detected_size = self.info["_detected_context_size"]
+            print(f"Detected context size: {detected_size:,}" if detected_size else "Detected context size: not found")
+        
+        print("=" * 50)
+
+    def _apply_config_overrides(self):
+        """Apply configuration-based parameter overrides."""
+        # This will be enhanced when config integration is completed
+        # For now, it's a placeholder for future config-based overrides
+        pass
 
 
 class EndpointAwareModelManager:

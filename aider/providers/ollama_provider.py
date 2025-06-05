@@ -150,7 +150,7 @@ class OllamaProvider(BaseProvider):
         }
     
     def get_model_info(self, model: str) -> Dict[str, Any]:
-        """Get Ollama model information."""
+        """Get Ollama model information from API."""
         try:
             response = requests.post(
                 f"{self.base_url}/api/show",
@@ -163,35 +163,85 @@ class OllamaProvider(BaseProvider):
                 
                 # Extract model info from Ollama response
                 info = {}
+                context_size = None
                 
                 # Try to get context size from model info
                 if "model_info" in data:
                     model_info = data["model_info"]
-                    # Look for context size in various possible fields
-                    for key in ["context_length", "max_sequence_length", "n_ctx"]:
-                        if key in model_info:
-                            info["max_input_tokens"] = model_info[key]
-                            info["max_output_tokens"] = model_info[key]
+                    
+                    # Look for architecture-specific context length fields first
+                    # These are typically named like "qwen3moe.context_length", "llama.context_length", etc.
+                    for key, value in model_info.items():
+                        if "context_length" in key.lower():
+                            context_size = int(value)
+                            info["max_input_tokens"] = context_size
+                            info["max_output_tokens"] = context_size
                             break
+                    
+                    # If no architecture-specific field found, try generic fields
+                    if not context_size:
+                        for key in ["context_length", "max_sequence_length", "n_ctx"]:
+                            if key in model_info:
+                                context_size = int(model_info[key])
+                                info["max_input_tokens"] = context_size
+                                info["max_output_tokens"] = context_size
+                                break
                 
-                # Default context size if not found
+                # Also try to get from parameters section
+                if not context_size and "parameters" in data:
+                    params = data["parameters"]
+                    if "num_ctx" in params:
+                        context_size = int(params["num_ctx"])
+                        info["max_input_tokens"] = context_size
+                        info["max_output_tokens"] = context_size
+                
+                # Try template system message for additional context clues
+                if "template" in data and not context_size:
+                    # Some models encode context length hints in templates
+                    template = data["template"]
+                    if "32768" in template or "32k" in template.lower():
+                        context_size = 32768
+                    elif "16384" in template or "16k" in template.lower():
+                        context_size = 16384
+                    elif "8192" in template or "8k" in template.lower():
+                        context_size = 8192
+                    
+                    if context_size:
+                        info["max_input_tokens"] = context_size
+                        info["max_output_tokens"] = context_size
+                
+                # Enhanced fallback based on model architecture
                 if "max_input_tokens" not in info:
-                    info["max_input_tokens"] = 4096
-                    info["max_output_tokens"] = 4096
+                    # Better defaults based on common model patterns
+                    if any(pattern in model.lower() for pattern in ["llama", "mistral", "mixtral"]):
+                        context_size = 32768  # Modern LLaMA models typically support 32k
+                    elif any(pattern in model.lower() for pattern in ["qwen", "yi"]):
+                        context_size = 32768  # Qwen and Yi models often support 32k+
+                    elif any(pattern in model.lower() for pattern in ["phi", "gemma"]):
+                        context_size = 8192   # Smaller models
+                    else:
+                        context_size = 8192   # Conservative default
+                    
+                    info["max_input_tokens"] = context_size
+                    info["max_output_tokens"] = context_size
                 
                 # Ollama is typically free/self-hosted
                 info["input_cost_per_token"] = 0.0
                 info["output_cost_per_token"] = 0.0
                 
+                # Store additional metadata for debugging
+                info["_ollama_raw_data"] = data
+                info["_detected_context_size"] = context_size
+                
                 return info
                 
-        except requests.exceptions.RequestException:
-            pass
+        except requests.exceptions.RequestException as e:
+            print(f"Warning: Could not fetch Ollama model info for {model}: {e}")
         
-        # Default fallback for Ollama models
+        # Default fallback for Ollama models - use more reasonable defaults
         return {
-            "max_input_tokens": 4096,
-            "max_output_tokens": 4096,
+            "max_input_tokens": 8192,   # Increased from 4096
+            "max_output_tokens": 8192,
             "input_cost_per_token": 0.0,
             "output_cost_per_token": 0.0
         }

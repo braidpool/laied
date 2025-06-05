@@ -10,6 +10,7 @@ from .base import BaseProvider, ModelResponse, ProviderError
 from .openai_provider import OpenAIProvider
 from .anthropic_provider import AnthropicProvider
 from .ollama_provider import OllamaProvider
+from .llamacpp_provider import LLamaCPPProvider
 
 
 class ProviderManager:
@@ -25,18 +26,26 @@ class ProviderManager:
             "openai": OpenAIProvider(),
             "anthropic": AnthropicProvider(),
             "ollama": OllamaProvider(),
+            "llamacpp": LLamaCPPProvider(),
         }
     
     def get_provider_for_model(self, model: str) -> BaseProvider:
         """Get the appropriate provider for a model."""
-        # Extract provider from model name
+        # Check for explicit provider prefix first
         if "/" in model:
-            provider_name = model.split("/")[0]
-            model_name = model.split("/", 1)[1]
+            potential_provider = model.split("/")[0]
+            # If it's an explicit provider name (not a URL), use it
+            if potential_provider in self._providers:
+                provider_name = potential_provider
+            elif not any(pattern in potential_provider for pattern in ["localhost", "127.0.0.1", ":", "http"]):
+                # Try to detect provider from model name patterns
+                provider_name = self._detect_provider_from_model(model)
+            else:
+                # It's a URL pattern, use detection
+                provider_name = self._detect_provider_from_model(model)
         else:
-            # Try to detect provider from model name patterns
+            # No slash, use pattern detection
             provider_name = self._detect_provider_from_model(model)
-            model_name = model
         
         # Handle special provider mappings
         provider_mappings = {
@@ -55,6 +64,10 @@ class ProviderManager:
     def _detect_provider_from_model(self, model: str) -> str:
         """Detect provider from model name patterns."""
         model_lower = model.lower()
+        
+        # LLamaCPP models (check for localhost/IP patterns first)
+        if any(pattern in model for pattern in ["localhost", "127.0.0.1", ":8080", ":8000"]):
+            return "llamacpp"
         
         if any(pattern in model_lower for pattern in ["gpt", "o1", "chatgpt", "whisper"]):
             return "openai"
@@ -129,7 +142,11 @@ class ProviderManager:
         """Get model information from the appropriate provider."""
         provider = self.get_provider_for_model(model)
         
-        # Extract model name without provider prefix
+        # For LLamaCPP, pass the full model name so it can extract base URL
+        if isinstance(provider, LLamaCPPProvider):
+            return provider.get_model_info(model)
+        
+        # For other providers, extract model name without provider prefix
         if "/" in model:
             model_name = model.split("/", 1)[1]
         else:

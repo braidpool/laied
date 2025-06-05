@@ -19,6 +19,16 @@ import yaml
 
 
 @dataclass
+class ModelParameterOverrides:
+    """Model parameter overrides for fine-tuning behavior."""
+    max_input_tokens: Optional[int] = None
+    max_output_tokens: Optional[int] = None
+    temperature: Optional[float] = None
+    streaming: Optional[bool] = None
+    use_system_prompt: Optional[bool] = None
+    cache_prompts: Optional[bool] = None
+
+@dataclass
 class ProviderConfig:
     """Configuration for a single provider endpoint."""
     type: str  # openai, ollama, anthropic, etc.
@@ -26,6 +36,7 @@ class ProviderConfig:
     base_url: Optional[str] = None
     models: List[str] = field(default_factory=list)
     extra_params: Dict[str, Any] = field(default_factory=dict)
+    model_overrides: Dict[str, ModelParameterOverrides] = field(default_factory=dict)
 
     def __post_init__(self):
         """Validate provider configuration."""
