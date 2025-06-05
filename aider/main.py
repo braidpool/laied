@@ -486,6 +486,22 @@ def display_config_info(args, default_config_files):
     # Display config file info
     if config_file_used:
         print(f"Using configuration file: {config_file_used}")
+        
+        # Check for environment variable conflicts if using new config system
+        try:
+            from aider.config import ConfigManager
+            config_manager = ConfigManager()
+            config = config_manager.load_config(config_file_used)
+            conflicts = config.detect_environment_conflicts()
+            
+            if conflicts:
+                print("⚠️  Environment variable conflicts detected:")
+                for conflict in conflicts:
+                    print(f"   {conflict}")
+                print("   Consider updating your .aider.yml file or removing conflicting environment variables.")
+        except Exception:
+            # If we can't load the new config system, just continue
+            pass
     else:
         print("No configuration file found, using defaults")
     
@@ -591,6 +607,18 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             print("Documentation: https://aider.chat/docs/config/")
         except Exception as e:
             print(f"Error creating configuration file: {e}", file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)
+
+    # Handle --update-config early
+    if hasattr(args, 'update_config') and args.update_config:
+        from aider.config import ConfigManager
+        try:
+            config_manager = ConfigManager()
+            config_path = config_manager.update_existing_config_with_models()
+            print(f"\nConfiguration file has been updated with the latest available models.")
+        except Exception as e:
+            print(f"Error updating configuration file: {e}", file=sys.stderr)
             sys.exit(1)
         sys.exit(0)
 
@@ -845,8 +873,12 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
     register_models(git_root, args.model_settings_file, io, verbose=args.verbose)
     register_litellm_models(git_root, args.model_metadata_file, io, verbose=args.verbose)
 
-    if args.list_models:
-        models.print_matching_models(io, args.list_models)
+    if args.list_models != "__not_set__":
+        # args.list_models is "" when flag is provided with no argument (--list-models)
+        # It contains the search string when an argument is provided (--list-models gpt)
+        # It's "__not_set__" when the flag isn't used at all
+        search_term = args.list_models
+        models.print_matching_models(io, search_term)
         analytics.event("exit", reason="Listed models")
         return 0
 

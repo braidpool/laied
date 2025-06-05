@@ -77,8 +77,7 @@ class ConfigBridge:
         """Determine if we should use the new config system."""
         # Check for special flags that indicate new system usage
         new_system_flags = [
-            "--init-config", "--list-models",
-            "--validate-config", "--show-config"
+            "--init-config", "--update-config", "--list-models"
         ]
         
         return any(flag in argv for flag in new_system_flags)

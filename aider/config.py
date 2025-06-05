@@ -177,6 +177,63 @@ class AiderConfig:
             models=["llama3:8b", "codellama:7b"]
         )
 
+        # Add other providers based on environment variables
+        provider_env_map = {
+            "groq": ("GROQ_API_KEY", None),
+            "deepseek": ("DEEPSEEK_API_KEY", None),
+            "gemini": ("GEMINI_API_KEY", None),
+            "xai": ("XAI_API_KEY", None),
+            "cohere": ("COHERE_API_KEY", None),
+        }
+        
+        for provider_type, (key_env, base_env) in provider_env_map.items():
+            api_key = os.getenv(key_env)
+            if api_key:
+                base_url = os.getenv(base_env) if base_env else None
+                self.providers[f"{provider_type}_default"] = ProviderConfig(
+                    type=provider_type,
+                    api_key=api_key,
+                    base_url=base_url
+                )
+
+    def detect_environment_conflicts(self):
+        """
+        Detect conflicts between config file settings and environment variables.
+        Returns a list of conflict descriptions.
+        """
+        conflicts = []
+        
+        for endpoint_name, provider in self.providers.items():
+            provider_type = provider.type.upper()
+            
+            # Check API key conflicts
+            env_key_var = f"{provider_type}_API_KEY"
+            env_api_key = os.getenv(env_key_var)
+            if env_api_key and provider.api_key and env_api_key != provider.api_key:
+                conflicts.append(
+                    f"API key mismatch: {env_key_var}={env_api_key[:8]}... differs from "
+                    f"config file {endpoint_name}.api_key={provider.api_key[:8]}..."
+                )
+            
+            # Check base URL conflicts  
+            base_url_map = {
+                "OPENAI": "OPENAI_API_BASE",
+                "OLLAMA": "OLLAMA_HOST",
+                "ANTHROPIC": "ANTHROPIC_API_BASE",
+                "GROQ": "GROQ_API_BASE",
+                "DEEPSEEK": "DEEPSEEK_API_BASE",
+            }
+            
+            env_base_var = base_url_map.get(provider_type, f"{provider_type}_API_BASE")
+            env_base_url = os.getenv(env_base_var)
+            if env_base_url and provider.base_url and env_base_url != provider.base_url:
+                conflicts.append(
+                    f"Base URL mismatch: {env_base_var}={env_base_url} differs from "
+                    f"config file {endpoint_name}.base_url={provider.base_url}"
+                )
+        
+        return conflicts
+
     def resolve_model_name(self, model_spec: str) -> Optional[str]:
         """
         Resolve a model specification to endpoint_name/model_name format.
@@ -417,27 +474,335 @@ class ConfigManager:
                 result[key] = value
         return result
 
-    def create_sample_config(self, path: Optional[Union[str, Path]] = None) -> Path:
-        """Create a sample configuration file by copying the sample template."""
+    def create_sample_config(self, path: Optional[Union[str, Path]] = None, include_env_vars: bool = True) -> Path:
+        """Create a sample configuration file, optionally including detected environment variables."""
         if path:
             config_path = Path(path)
         else:
             config_path = Path.cwd() / ".aider.yml"
         
-        # Find the sample file in the aider package
-        import aider
-        aider_dir = Path(aider.__file__).parent.parent
-        sample_file = aider_dir / "aider.yml.sample"
-        
-        if sample_file.exists():
-            # Copy the sample file
-            import shutil
-            shutil.copy2(sample_file, config_path)
+        if include_env_vars:
+            # Create config with detected environment variables
+            self._create_config_with_env_vars(config_path)
         else:
-            # Fallback to creating a basic config
-            self._create_basic_config_file(config_path)
+            # Find the sample file in the aider package
+            import aider
+            aider_dir = Path(aider.__file__).parent.parent
+            sample_file = aider_dir / "aider.yml.sample"
+            
+            if sample_file.exists():
+                # Copy the sample file
+                import shutil
+                shutil.copy2(sample_file, config_path)
+            else:
+                # Fallback to creating a basic config
+                self._create_basic_config_file(config_path)
         
         return config_path
+
+    def update_existing_config_with_models(self, config_path: Optional[Union[str, Path]] = None) -> Path:
+        """Update an existing configuration file with newly discovered models."""
+        # Find existing config file
+        if config_path:
+            config_path = Path(config_path)
+            if not config_path.exists():
+                raise FileNotFoundError(f"Configuration file not found: {config_path}")
+        else:
+            config_path = self.find_config_file()
+            if not config_path:
+                raise FileNotFoundError("No configuration file found. Use --init-config to create one.")
+        
+        print(f"Updating configuration file: {config_path}")
+        
+        # Load existing configuration
+        existing_config = self.load_config(config_path)
+        
+        # Convert providers to dict format for interrogation
+        provider_configs = {}
+        for name, provider in existing_config.providers.items():
+            provider_configs[provider.type] = {
+                'type': provider.type,
+                'api_key': provider.api_key,
+                'base_url': provider.base_url
+            }
+        
+        # Interrogate endpoints for new models
+        if provider_configs:
+            print("Discovering available models from API endpoints...")
+            updated_providers = self.interrogate_endpoints_for_models(provider_configs)
+            
+            # Update the existing config with new models
+            for name, provider in existing_config.providers.items():
+                provider_type = provider.type
+                if provider_type in updated_providers and 'models' in updated_providers[provider_type]:
+                    new_models = updated_providers[provider_type]['models']
+                    old_models = provider.models or []
+                    provider.models = new_models
+                    print(f"  Updated {name}: {len(old_models)} -> {len(new_models)} models")
+        
+        # Save the updated configuration
+        self.save_config(existing_config, config_path)
+        print(f"Configuration file updated: {config_path}")
+        
+        return config_path
+
+    def interrogate_endpoints_for_models(self, detected_providers: Dict[str, Dict[str, str]]) -> Dict[str, Dict[str, str]]:
+        """Query API endpoints to discover available models."""
+        import time
+        import json
+        
+        for provider_type, config in detected_providers.items():
+            if 'api_key' not in config:
+                continue  # Skip providers without API keys
+                
+            print(f"Discovering models for {provider_type}...")
+            
+            try:
+                models = self._query_provider_models(provider_type, config)
+                if models:
+                    config['models'] = models
+                    print(f"  Found {len(models)} models")
+                else:
+                    # Use default models if discovery fails
+                    config['models'] = self._get_default_models(provider_type)
+                    print(f"  Using default models (discovery failed)")
+            except Exception as e:
+                print(f"  Model discovery failed for {provider_type}: {e}")
+                config['models'] = self._get_default_models(provider_type)
+            
+            # Small delay to avoid rate limiting
+            time.sleep(0.5)
+        
+        return detected_providers
+
+    def _query_provider_models(self, provider_type: str, config: Dict[str, str]) -> List[str]:
+        """Query a specific provider for available models."""
+        import requests
+        
+        if provider_type == 'openai':
+            return self._query_openai_models(config)
+        elif provider_type == 'anthropic':
+            return self._query_anthropic_models(config)
+        elif provider_type == 'groq':
+            return self._query_groq_models(config)
+        elif provider_type == 'ollama':
+            return self._query_ollama_models(config)
+        # Add more providers as needed
+        
+        return []
+
+    def _query_openai_models(self, config: Dict[str, str]) -> List[str]:
+        """Query OpenAI API for available models."""
+        import requests
+        
+        base_url = config.get('base_url', 'https://api.openai.com/v1')
+        api_key = config.get('api_key')
+        
+        if not api_key:
+            return []
+        
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        try:
+            response = requests.get(f"{base_url}/models", headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                models = [model['id'] for model in data.get('data', []) 
+                         if model['id'].startswith(('gpt-', 'o1-', 'chatgpt-'))]
+                return sorted(models)
+        except Exception:
+            pass
+        
+        return []
+
+    def _query_anthropic_models(self, config: Dict[str, str]) -> List[str]:
+        """Query Anthropic API for available models (Claude models are well-known)."""
+        # Anthropic doesn't have a public models endpoint, so we use known models
+        return [
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-20241022", 
+            "claude-3-opus-20240229",
+            "claude-3-sonnet-20240229",
+            "claude-3-haiku-20240307"
+        ]
+
+    def _query_groq_models(self, config: Dict[str, str]) -> List[str]:
+        """Query Groq API for available models."""
+        import requests
+        
+        api_key = config.get('api_key')
+        if not api_key:
+            return []
+        
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        try:
+            response = requests.get("https://api.groq.com/openai/v1/models", headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                models = [model['id'] for model in data.get('data', [])]
+                return sorted(models)
+        except Exception:
+            pass
+        
+        return []
+
+    def _query_ollama_models(self, config: Dict[str, str]) -> List[str]:
+        """Query Ollama API for available models."""
+        import requests
+        
+        base_url = config.get('base_url', 'http://localhost:11434')
+        
+        try:
+            response = requests.get(f"{base_url}/api/tags", timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                models = [model['name'] for model in data.get('models', [])]
+                return sorted(models)
+        except Exception:
+            pass
+        
+        return []
+
+    def _get_default_models(self, provider_type: str) -> List[str]:
+        """Get default models for a provider when discovery fails."""
+        defaults = {
+            'openai': ["gpt-4o", "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"],
+            'anthropic': ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
+            'groq': ["llama-3.1-8b-instant", "mixtral-8x7b-32768"],
+            'ollama': ["llama3:8b", "codellama:7b", "mistral:7b"],
+            'deepseek': ["deepseek-chat", "deepseek-coder"],
+            'gemini': ["gemini-1.5-pro", "gemini-1.5-flash"],
+            'xai': ["grok-1"],
+            'cohere': ["command-r", "command-r-plus"]
+        }
+        return defaults.get(provider_type, [])
+
+    def _create_config_with_env_vars(self, config_path: Path):
+        """Create a configuration file with detected environment variables."""
+        detected_providers = {}
+        detected_settings = {}
+        
+        # Detect provider configurations from environment
+        env_vars_to_check = {
+            'OPENAI_API_KEY': ('openai', 'api_key'),
+            'OPENAI_API_BASE': ('openai', 'base_url'),
+            'ANTHROPIC_API_KEY': ('anthropic', 'api_key'),
+            'ANTHROPIC_API_BASE': ('anthropic', 'base_url'),
+            'GROQ_API_KEY': ('groq', 'api_key'),
+            'GROQ_API_BASE': ('groq', 'base_url'),
+            'DEEPSEEK_API_KEY': ('deepseek', 'api_key'),
+            'DEEPSEEK_API_BASE': ('deepseek', 'base_url'),
+            'GEMINI_API_KEY': ('gemini', 'api_key'),
+            'XAI_API_KEY': ('xai', 'api_key'),
+            'COHERE_API_KEY': ('cohere', 'api_key'),
+            'OLLAMA_HOST': ('ollama', 'base_url'),
+        }
+        
+        for env_var, (provider_type, setting) in env_vars_to_check.items():
+            value = os.getenv(env_var)
+            if value:
+                if provider_type not in detected_providers:
+                    detected_providers[provider_type] = {'type': provider_type}
+                detected_providers[provider_type][setting] = value
+        
+        # Interrogate endpoints for models
+        if detected_providers:
+            print("Discovering available models from API endpoints...")
+            detected_providers = self.interrogate_endpoints_for_models(detected_providers)
+        
+        # Create config content with detected values
+        config_content = self._generate_config_content_with_env_vars(detected_providers)
+        
+        with open(config_path, 'w', encoding='utf-8') as f:
+            f.write(config_content)
+
+    def _generate_config_content_with_env_vars(self, detected_providers: Dict[str, Dict[str, str]]) -> str:
+        """Generate configuration file content with detected environment variables."""
+        content = """# Aider Configuration File
+# Generated with detected environment variables
+# For full documentation: https://aider.chat/docs/config/
+
+"""
+        
+        if detected_providers:
+            content += "providers:\n"
+            
+            for provider_type, config in detected_providers.items():
+                endpoint_name = f"{provider_type}_main"
+                content += f"  {endpoint_name}:\n"
+                content += f"    type: {provider_type}\n"
+                
+                if 'api_key' in config:
+                    # Show truncated key for reference
+                    truncated_key = config['api_key'][:8] + "..." if len(config['api_key']) > 8 else config['api_key']
+                    content += f"    api_key: \"{config['api_key']}\"\n"
+                
+                if 'base_url' in config:
+                    content += f"    base_url: \"{config['base_url']}\"\n"
+                
+                # Add discovered or default models
+                if 'models' in config and config['models']:
+                    models_str = ", ".join([f'"{model}"' for model in config['models']])
+                    content += f"    models: [{models_str}]\n"
+                
+                content += "\n"
+        else:
+            # No environment variables detected, create example config
+            content += """providers:
+  openai_main:
+    type: openai
+    api_key: "sk-your-openai-key-here"
+    base_url: "https://api.openai.com/v1"
+    models: ["gpt-4o", "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"]
+    
+  anthropic_main:
+    type: anthropic
+    api_key: "sk-ant-your-key-here"
+    models: ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"]
+    
+  local_ollama:
+    type: ollama
+    base_url: "http://localhost:11434"
+    models: ["llama3:8b", "codellama:7b", "mistral:7b"]
+
+"""
+        
+        content += """# Model aliases for convenience
+model_aliases:
+  sonnet: "anthropic_main/claude-3-5-sonnet-20241022"
+  gpt4o: "openai_main/gpt-4o"
+  gpt4: "openai_main/gpt-4"
+
+# Default model to use
+model: "sonnet"
+
+# Git settings
+git:
+  auto_commits: true
+  commit_prefix: "aider: "
+  attribute_author: true
+
+# Output settings
+output:
+  user_input_color: "#00cc00"
+  pretty: true
+  stream: true
+  show_diffs: false
+
+# Other settings
+edit_format: "diff"
+vim: false
+encoding: "utf-8"
+"""
+        
+        return content
 
     def _create_basic_config_file(self, config_path: Path):
         """Create a basic configuration file if sample is not available."""

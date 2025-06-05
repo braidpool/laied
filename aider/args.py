@@ -53,6 +53,12 @@ For help and documentation: https://aider.chat/docs/
     )
 
     parser.add_argument(
+        "--update-config",
+        action="store_true",
+        help="Update existing .aider.yml configuration file with newly discovered models and exit"
+    )
+
+    parser.add_argument(
         "-c",
         "--config",
         metavar="CONFIG_FILE",
@@ -191,20 +197,10 @@ For help and documentation: https://aider.chat/docs/
         metavar="MODEL",
         nargs="?",
         const="",
+        default="__not_set__",
         help="List known models which match the (partial) MODEL name, or all if no MODEL given"
     )
 
-    parser.add_argument(
-        "--validate-config",
-        action="store_true",
-        help="Validate configuration file and exit"
-    )
-
-    parser.add_argument(
-        "--show-config",
-        action="store_true", 
-        help="Show current configuration and exit"
-    )
 
     # Shell completions
     supported_shells_list = sorted(list(shtab.SUPPORTED_SHELLS))
