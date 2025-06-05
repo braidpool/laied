@@ -23,6 +23,14 @@ from aider.openrouter import OpenRouterModelManager
 from aider.sendchat import ensure_alternating_roles, sanity_check_messages
 from aider.utils import check_pip_install_extra
 
+# Import after defining the config module to avoid circular imports
+try:
+    from aider.config import AiderConfig, ProviderConfig
+except ImportError:
+    # Fallback for when config system is not yet available
+    AiderConfig = None
+    ProviderConfig = None
+
 RETRY_TIMEOUT = 60
 
 request_timeout = 600
@@ -1026,6 +1034,206 @@ class Model(ModelSettings):
                 continue
             except AttributeError:
                 return None
+
+
+class EndpointAwareModelManager:
+    """
+    Manages endpoint-aware model resolution and environment setup.
+    
+    This class bridges the new unified configuration system with the existing
+    Model class, providing endpoint-specific model resolution and environment
+    management for multi-endpoint support.
+    """
+    
+    def __init__(self, config: Optional["AiderConfig"] = None):
+        self.config = config
+        self._model_cache = {}
+
+    def set_config(self, config: "AiderConfig"):
+        """Set the configuration and clear model cache."""
+        self.config = config
+        self._model_cache.clear()
+
+    def resolve_model_spec(self, model_spec: str) -> tuple[str, Optional["ProviderConfig"]]:
+        """
+        Resolve a model specification to (model_name, provider_config).
+        
+        Args:
+            model_spec: Model specification (alias, endpoint/model, or model name)
+            
+        Returns:
+            Tuple of (resolved_model_name, provider_config) or (model_spec, None) if not found
+        """
+        if not self.config:
+            # Fallback to legacy behavior when no config is available
+            return MODEL_ALIASES.get(model_spec, model_spec), None
+
+        resolved = self.config.resolve_model_name(model_spec)
+        if not resolved:
+            # Fallback to legacy aliases if config resolution fails
+            legacy_resolved = MODEL_ALIASES.get(model_spec, model_spec)
+            return legacy_resolved, None
+
+        # Extract endpoint and model name
+        if "/" in resolved:
+            endpoint_name, model_name = resolved.split("/", 1)
+            provider_config = self.config.providers.get(endpoint_name)
+            return model_name, provider_config
+        else:
+            return resolved, None
+
+    def setup_environment_for_model(self, model_spec: str) -> dict:
+        """
+        Set up environment variables for a specific model endpoint.
+        
+        Returns a dictionary of environment variables that were set.
+        """
+        if not self.config:
+            return {}
+
+        model_name, provider_config = self.resolve_model_spec(model_spec)
+        
+        if not provider_config:
+            return {}
+
+        env_vars = {}
+        
+        # Set provider-specific environment variables
+        provider_type = provider_config.type.upper()
+        
+        if provider_config.api_key:
+            env_key = f"{provider_type}_API_KEY"
+            os.environ[env_key] = provider_config.api_key
+            env_vars[env_key] = provider_config.api_key
+
+        if provider_config.base_url:
+            # Map provider types to their base URL environment variables
+            base_url_map = {
+                "OPENAI": "OPENAI_API_BASE",
+                "OLLAMA": "OLLAMA_HOST",
+                "ANTHROPIC": "ANTHROPIC_API_BASE",
+                "GROQ": "GROQ_API_BASE",
+                "DEEPSEEK": "DEEPSEEK_API_BASE",
+            }
+            
+            env_key = base_url_map.get(provider_type, f"{provider_type}_API_BASE")
+            os.environ[env_key] = provider_config.base_url
+            env_vars[env_key] = provider_config.base_url
+
+        # Set any extra parameters as environment variables
+        for key, value in provider_config.extra_params.items():
+            env_key = f"{provider_type}_{key.upper()}"
+            os.environ[env_key] = str(value)
+            env_vars[env_key] = str(value)
+
+        return env_vars
+
+    def create_model(
+        self, 
+        model_spec: str, 
+        weak_model: Optional[str] = None, 
+        editor_model: Optional[str] = None,
+        **kwargs
+    ) -> "Model":
+        """
+        Create a Model instance with endpoint-aware configuration.
+        
+        This method resolves the model specification, sets up the appropriate
+        environment, and returns a configured Model instance.
+        """
+        # Resolve the model specification
+        resolved_model, provider_config = self.resolve_model_spec(model_spec)
+        
+        # Set up environment for this specific endpoint
+        env_vars = self.setup_environment_for_model(model_spec)
+        
+        # Apply model-specific settings from config
+        model_settings = {}
+        if self.config:
+            model_settings = self.config.get_model_settings(model_spec)
+        
+        try:
+            # Create the model instance with the resolved name
+            # The Model class will use the environment we just set up
+            model = Model(
+                model=resolved_model,
+                weak_model=weak_model,
+                editor_model=editor_model,
+                **kwargs
+            )
+            
+            # Apply any model-specific settings from the config
+            if model_settings:
+                for key, value in model_settings.items():
+                    if hasattr(model, key):
+                        setattr(model, key, value)
+                    elif hasattr(model, 'extra_params'):
+                        if not model.extra_params:
+                            model.extra_params = {}
+                        model.extra_params[key] = value
+            
+            # Store endpoint information on the model for reference
+            model._endpoint_name = model_spec.split("/")[0] if "/" in model_spec else None
+            model._provider_config = provider_config
+            model._resolved_spec = model_spec
+            
+            return model
+            
+        except Exception as e:
+            # Clean up environment variables if model creation fails
+            for env_key in env_vars:
+                if env_key in os.environ:
+                    del os.environ[env_key]
+            raise e
+
+    def get_available_models(self) -> dict:
+        """
+        Get all available models organized by endpoint.
+        
+        Returns:
+            Dictionary mapping endpoint names to lists of available models
+        """
+        if not self.config:
+            return {}
+            
+        available = {}
+        for endpoint_name, provider_config in self.config.providers.items():
+            if provider_config.models:
+                available[endpoint_name] = provider_config.models.copy()
+            else:
+                # If no models specified, return empty list (allowing any model)
+                available[endpoint_name] = []
+                
+        return available
+
+    def validate_model_spec(self, model_spec: str) -> tuple[bool, str]:
+        """
+        Validate a model specification.
+        
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        if not self.config:
+            # Without config, accept any model that exists in legacy aliases
+            if model_spec in MODEL_ALIASES or "/" in model_spec:
+                return True, ""
+            return False, f"Model '{model_spec}' not found in aliases"
+
+        resolved = self.config.resolve_model_name(model_spec)
+        if not resolved:
+            return False, f"Model '{model_spec}' not found in configuration"
+            
+        # Check if the endpoint exists
+        if "/" in resolved:
+            endpoint_name = resolved.split("/", 1)[0]
+            if endpoint_name not in self.config.providers:
+                return False, f"Endpoint '{endpoint_name}' not configured"
+                
+        return True, ""
+
+
+# Global endpoint-aware model manager
+endpoint_model_manager = EndpointAwareModelManager()
 
 
 def register_models(model_settings_fnames):
