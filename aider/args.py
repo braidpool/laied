@@ -231,19 +231,125 @@ For help and documentation: https://aider.chat/docs/
     # Legacy attributes for backwards compatibility with main.py
     # These are set to defaults since they're not configurable via CLI anymore
     parser.set_defaults(
+        # Core settings
         env_file=".env",
         git=True,
         verify_ssl=True,
         timeout=None,
+        
+        # Analytics
+        analytics=True,
         analytics_disable=False,
+        analytics_log=None,
+        
+        # Display and colors
         dark_mode=False,
         light_mode=False,
         user_input_color="#00cc00",
         tool_error_color="#FF2222", 
         tool_warning_color="#FFA500",
+        tool_output_color=None,
         assistant_output_color="#0088ff",
+        completion_menu_color=None,
+        completion_menu_bg_color=None,
+        completion_menu_current_color=None,
+        completion_menu_current_bg_color=None,
         code_theme="default",
-        pretty=True
+        stream=True,
+        show_diffs=False,
+        show_model_warnings=True,
+        show_prompts=False,
+        show_release_notes=None,
+        
+        # History files
+        input_history_file=".aider.input.history",
+        chat_history_file=".aider.chat.history.md",
+        llm_history_file=None,
+        restore_chat_history=False,
+        
+        # Git settings
+        gitignore=True,
+        aiderignore=".aiderignore",
+        subtree_only=False,
+        attribute_author=True,
+        attribute_committer=True,
+        attribute_co_authored_by=False,
+        attribute_commit_message_author=False,
+        attribute_commit_message_committer=False,
+        git_commit_verify=False,
+        commit_prompt=None,
+        dirty_commits=True,
+        skip_sanity_check_repo=False,
+        
+        # Model settings
+        editor_model=None,
+        editor_edit_format=None,
+        model_settings_file=".aider.model.settings.yml",
+        model_metadata_file=".aider.model.metadata.json",
+        alias=[],
+        reasoning_effort=None,
+        thinking_tokens=None,
+        check_model_accepts_settings=True,
+        max_chat_history_tokens=None,
+        
+        # Cache settings
+        cache_prompts=False,
+        cache_keepalive_pings=0,
+        
+        # Repomap settings
+        map_tokens=None,
+        map_refresh="auto",
+        map_multiplier_no_files=2.0,
+        
+        # API settings
+        openai_api_type=None,
+        openai_api_version=None,
+        openai_organization_id=None,
+        set_env=[],
+        api_key=[],
+        
+        # Voice settings
+        voice_format="wav",
+        voice_language="en",
+        voice_input_device=None,
+        
+        # Other features
+        architect=False,
+        auto_accept_architect=True,
+        copy_paste=False,
+        apply=None,
+        apply_clipboard_edits=False,
+        exit=False,
+        detect_urls=True,
+        editor=None,
+        fancy_input=True,
+        multiline=False,
+        notifications=False,
+        notifications_command=None,
+        suggest_shell_commands=True,
+        line_endings="platform",
+        load=None,
+        chat_language=None,
+        commit_language=None,
+        watch_files=False,
+        
+        # Linting and testing
+        lint=False,
+        lint_cmd=[],
+        auto_lint=True,
+        test=False,
+        test_cmd=[],
+        auto_test=False,
+        
+        # Updates
+        just_check_update=False,
+        check_update=True,
+        install_main_branch=False,
+        upgrade=False,
+        update=False,
+        
+        # Disabled features
+        disable_playwright=False,
     )
 
     return parser
