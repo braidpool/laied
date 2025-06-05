@@ -60,10 +60,6 @@ click==8.1.8
     # via
     #   -c requirements/common-constraints.txt
     #   litellm
-configargparse==1.7.1
-    # via
-    #   -c requirements/common-constraints.txt
-    #   -r requirements/requirements.in
 diff-match-patch==20241021
     # via
     #   -c requirements/common-constraints.txt
@@ -77,6 +73,10 @@ distro==1.9.0
     #   -c requirements/common-constraints.txt
     #   openai
     #   posthog
+ffmpeg-python==0.2.0
+    # via
+    #   -c requirements/common-constraints.txt
+    #   -r requirements/requirements.in
 filelock==3.18.0
     # via
     #   -c requirements/common-constraints.txt
@@ -94,6 +94,10 @@ fsspec==2025.3.2
     # via
     #   -c requirements/common-constraints.txt
     #   huggingface-hub
+future==1.0.0
+    # via
+    #   -c requirements/common-constraints.txt
+    #   ffmpeg-python
 gitdb==4.0.12
     # via
     #   -c requirements/common-constraints.txt
@@ -343,10 +347,6 @@ pydantic-core==2.33.2
     # via
     #   -c requirements/common-constraints.txt
     #   pydantic
-pydub==0.25.1
-    # via
-    #   -c requirements/common-constraints.txt
-    #   -r requirements/requirements.in
 pyflakes==3.3.2
     # via
     #   -c requirements/common-constraints.txt
@@ -485,14 +485,12 @@ tree-sitter-yaml==0.7.0
 typing-extensions==4.13.2
     # via
     #   -c requirements/common-constraints.txt
-    #   anyio
     #   beautifulsoup4
     #   google-generativeai
     #   huggingface-hub
     #   openai
     #   pydantic
     #   pydantic-core
-    #   referencing
     #   typing-inspection
 typing-inspection==0.4.0
     # via

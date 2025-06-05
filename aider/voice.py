@@ -17,8 +17,10 @@ warnings.filterwarnings(
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 
-from pydub import AudioSegment  # noqa
-from pydub.exceptions import CouldntDecodeError, CouldntEncodeError  # noqa
+try:
+    import ffmpeg
+except ModuleNotFoundError:
+    ffmpeg = None
 
 try:
     import soundfile as sf
@@ -151,18 +153,28 @@ class Voice:
 
         filename = temp_wav
         if use_audio_format != "wav":
-            try:
-                new_filename = tempfile.mktemp(suffix=f".{use_audio_format}")
-                audio = AudioSegment.from_wav(temp_wav)
-                audio.export(new_filename, format=use_audio_format)
-                os.remove(temp_wav)
-                filename = new_filename
-            except (CouldntDecodeError, CouldntEncodeError) as e:
-                print(f"Error converting audio: {e}")
-            except (OSError, FileNotFoundError) as e:
-                print(f"File system error during conversion: {e}")
-            except Exception as e:
-                print(f"Unexpected error during audio conversion: {e}")
+            if ffmpeg is None:
+                print("Warning: ffmpeg-python not available, keeping WAV format")
+                use_audio_format = "wav"
+            else:
+                try:
+                    new_filename = tempfile.mktemp(suffix=f".{use_audio_format}")
+                    # Use ffmpeg for audio conversion
+                    (
+                        ffmpeg
+                        .input(temp_wav)
+                        .output(new_filename, format=use_audio_format)
+                        .overwrite_output()
+                        .run(quiet=True)
+                    )
+                    os.remove(temp_wav)
+                    filename = new_filename
+                except ffmpeg.Error as e:
+                    print(f"Error converting audio with ffmpeg: {e}")
+                except (OSError, FileNotFoundError) as e:
+                    print(f"File system error during conversion: {e}")
+                except Exception as e:
+                    print(f"Unexpected error during audio conversion: {e}")
 
         with open(filename, "rb") as fh:
             try:

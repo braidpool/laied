@@ -1,5 +1,4 @@
-pydub
-configargparse
+ffmpeg-python
 GitPython
 jsonschema
 rich
@@ -47,5 +46,3 @@ scipy
 # Uses importlib-metadata
 importlib-metadata<8.0.0
 
-# configargparse was 1.7 pulled
-configargparse>1.7
