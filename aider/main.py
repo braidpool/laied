@@ -598,9 +598,27 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
 
     # Handle --init-config early
     if hasattr(args, 'init_config') and args.init_config:
-        from aider.config import create_sample_config
+        from aider.config import create_sample_config, discover_local_llm_servers
+        from aider.io import InputOutput
         try:
-            config_path = create_sample_config()
+            # Create a minimal IO object for user interaction during discovery
+            io = InputOutput(pretty=True, yes_always=False)
+            
+            # Discover local LLM servers before creating config (with user prompts)
+            print("Scanning for local LLM servers and running processes...")
+            discovered = discover_local_llm_servers(interactive=True, io=io)
+            if discovered:
+                print(f"Found {len(discovered)} local LLM server(s):")
+                for name, info in discovered.items():
+                    models_count = len(info.get('models', []))
+                    process_note = " (from running process)" if info.get('process_discovered') else ""
+                    print(f"  - {info['description']} at {info['base_url']} ({models_count} models){process_note}")
+                print()
+            else:
+                print("No local LLM servers found.")
+                print()
+            
+            config_path = create_sample_config(include_env_vars=True)
             print(f"Created sample configuration file: {config_path}")
             print("\nEdit this file to configure your API keys and preferences.")
             print("Documentation: https://aider.chat/docs/config/")
@@ -611,9 +629,43 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
 
     # Handle --update-config early
     if hasattr(args, 'update_config') and args.update_config:
-        from aider.config import ConfigManager
+        from aider.config import ConfigManager, discover_local_llm_servers, update_config_with_discoveries
+        from aider.io import InputOutput
         try:
             config_manager = ConfigManager()
+            
+            # Create a minimal IO object for user interaction during discovery
+            io = InputOutput(pretty=True, yes_always=False)
+            
+            # First, discover local LLM servers (with user prompts)
+            print("Scanning for local LLM servers and running processes...")
+            discovered = discover_local_llm_servers(interactive=True, io=io)
+            if discovered:
+                print(f"Found {len(discovered)} local LLM server(s):")
+                for name, info in discovered.items():
+                    models_count = len(info.get('models', []))
+                    process_note = " (from running process)" if info.get('process_discovered') else ""
+                    print(f"  - {info['description']} at {info['base_url']} ({models_count} models){process_note}")
+                print()
+            else:
+                print("No local LLM servers found.")
+                print()
+            
+            # Load existing config and update with discoveries
+            config_file = config_manager.find_config_file()
+            if config_file:
+                existing_config = config_manager.load_config(config_file)
+                changes_made = update_config_with_discoveries(existing_config, discovered, verbose=True)
+                if changes_made:
+                    config_manager.save_config(existing_config, config_file)
+                    print(f"Updated configuration with discovered local servers: {config_file}")
+                else:
+                    print("No new local servers to add to configuration.")
+            else:
+                print("No existing configuration file found.")
+                print("Use --init-config to create a new configuration file with discovered servers.")
+            
+            # Then update with latest models from API endpoints
             config_path = config_manager.update_existing_config_with_models()
             print(f"\nConfiguration file has been updated with the latest available models.")
         except Exception as e:
@@ -971,6 +1023,25 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             config_manager = ConfigManager()
             config = config_manager.load_config(config_file)
             endpoint_model_manager.set_config(config)
+            
+            # Set environment variables that LiteLLM expects based on config
+            # This allows config file base_url settings to work with LiteLLM validation
+            if config.providers:
+                for provider_name, provider_config in config.providers.items():
+                    if provider_config.base_url:
+                        # Map provider names to LiteLLM environment variable names
+                        env_var_map = {
+                            "ollama": "OLLAMA_API_BASE",
+                            "openai": "OPENAI_API_BASE", 
+                            "lm-studio": "LM_STUDIO_API_BASE",
+                            "together": "TOGETHER_API_BASE",
+                            "vllm": "VLLM_API_BASE",
+                        }
+                        env_var = env_var_map.get(provider_name.lower())
+                        if env_var and not os.environ.get(env_var):
+                            os.environ[env_var] = provider_config.base_url
+                            if args.verbose:
+                                io.tool_output(f"Set {env_var} from config: {provider_config.base_url}")
             
             # Resolve model name through config (handles aliases)
             resolved_model = config.resolve_model_name(args.model) or args.model
