@@ -2,7 +2,7 @@
 .vscode/
 aider.code-workspace
 *.pyc
-.aider*
+.laied*
 aider_chat.egg-info/
 build
 dist/
