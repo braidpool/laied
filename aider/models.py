@@ -1050,12 +1050,12 @@ class Model(ModelSettings):
 class EndpointAwareModelManager:
     """
     Manages endpoint-aware model resolution and environment setup.
-    
+
     This class bridges the new unified configuration system with the existing
     Model class, providing endpoint-specific model resolution and environment
     management for multi-endpoint support.
     """
-    
+
     def __init__(self, config: Optional["AiderConfig"] = None):
         self.config = config
         self._model_cache = {}
@@ -1068,10 +1068,10 @@ class EndpointAwareModelManager:
     def resolve_model_spec(self, model_spec: str) -> tuple[str, Optional["ProviderConfig"]]:
         """
         Resolve a model specification to (model_name, provider_config).
-        
+
         Args:
             model_spec: Model specification (alias, endpoint/model, or model name)
-            
+
         Returns:
             Tuple of (resolved_model_name, provider_config) or (model_spec, None) if not found
         """
@@ -1096,22 +1096,22 @@ class EndpointAwareModelManager:
     def setup_environment_for_model(self, model_spec: str) -> dict:
         """
         Set up environment variables for a specific model endpoint.
-        
+
         Returns a dictionary of environment variables that were set.
         """
         if not self.config:
             return {}
 
         model_name, provider_config = self.resolve_model_spec(model_spec)
-        
+
         if not provider_config:
             return {}
 
         env_vars = {}
-        
+
         # Set provider-specific environment variables
         provider_type = provider_config.type.upper()
-        
+
         if provider_config.api_key:
             env_key = f"{provider_type}_API_KEY"
             os.environ[env_key] = provider_config.api_key
@@ -1126,7 +1126,7 @@ class EndpointAwareModelManager:
                 "GROQ": "GROQ_API_BASE",
                 "DEEPSEEK": "DEEPSEEK_API_BASE",
             }
-            
+
             env_key = base_url_map.get(provider_type, f"{provider_type}_API_BASE")
             os.environ[env_key] = provider_config.base_url
             env_vars[env_key] = provider_config.base_url
@@ -1140,29 +1140,29 @@ class EndpointAwareModelManager:
         return env_vars
 
     def create_model(
-        self, 
-        model_spec: str, 
-        weak_model: Optional[str] = None, 
+        self,
+        model_spec: str,
+        weak_model: Optional[str] = None,
         editor_model: Optional[str] = None,
         **kwargs
     ) -> "Model":
         """
         Create a Model instance with endpoint-aware configuration.
-        
+
         This method resolves the model specification, sets up the appropriate
         environment, and returns a configured Model instance.
         """
         # Resolve the model specification
         resolved_model, provider_config = self.resolve_model_spec(model_spec)
-        
+
         # Set up environment for this specific endpoint
         env_vars = self.setup_environment_for_model(model_spec)
-        
+
         # Apply model-specific settings from config
         model_settings = {}
         if self.config:
             model_settings = self.config.get_model_settings(model_spec)
-        
+
         try:
             # Create the model instance with the resolved name
             # The Model class will use the environment we just set up
@@ -1172,7 +1172,7 @@ class EndpointAwareModelManager:
                 editor_model=editor_model,
                 **kwargs
             )
-            
+
             # Apply any model-specific settings from the config
             if model_settings:
                 for key, value in model_settings.items():
@@ -1182,14 +1182,14 @@ class EndpointAwareModelManager:
                         if not model.extra_params:
                             model.extra_params = {}
                         model.extra_params[key] = value
-            
+
             # Store endpoint information on the model for reference
             model._endpoint_name = model_spec.split("/")[0] if "/" in model_spec else None
             model._provider_config = provider_config
             model._resolved_spec = model_spec
-            
+
             return model
-            
+
         except Exception as e:
             # Clean up environment variables if model creation fails
             for env_key in env_vars:
@@ -1200,13 +1200,13 @@ class EndpointAwareModelManager:
     def get_available_models(self) -> dict:
         """
         Get all available models organized by endpoint.
-        
+
         Returns:
             Dictionary mapping endpoint names to lists of available models
         """
         if not self.config:
             return {}
-            
+
         available = {}
         for endpoint_name, provider_config in self.config.providers.items():
             if provider_config.models:
@@ -1214,13 +1214,13 @@ class EndpointAwareModelManager:
             else:
                 # If no models specified, return empty list (allowing any model)
                 available[endpoint_name] = []
-                
+
         return available
 
     def validate_model_spec(self, model_spec: str) -> tuple[bool, str]:
         """
         Validate a model specification.
-        
+
         Returns:
             Tuple of (is_valid, error_message)
         """
@@ -1233,13 +1233,13 @@ class EndpointAwareModelManager:
         resolved = self.config.resolve_model_name(model_spec)
         if not resolved:
             return False, f"Model '{model_spec}' not found in configuration"
-            
+
         # Check if the endpoint exists
         if "/" in resolved:
             endpoint_name = resolved.split("/", 1)[0]
             if endpoint_name not in self.config.providers:
                 return False, f"Endpoint '{endpoint_name}' not configured"
-                
+
         return True, ""
 
 
@@ -1394,25 +1394,25 @@ def check_for_dependencies(io, model_name):
 def fuzzy_match_models(name):
     """
     Find models that match the search term, using only configured and actually available models.
-    
+
     Search order:
-    1. Models from .laied.conf.yml configuration 
+    1. Models from .laied.conf.yml configuration
     2. Actually available models (by querying APIs)
-    
+
     No fallback to LiteLLM database to avoid unusable models.
     """
     name = name.lower()
     chat_models = set()
-    
+
     # First priority: Get models from configuration
     try:
         from aider.config import ConfigManager
         config_manager = ConfigManager()
         config_path = config_manager.find_config_file()
-        
+
         if config_path:
             config = config_manager.load_config(config_path)
-            
+
             # Add configured models from each provider
             for endpoint_name, provider in config.providers.items():
                 if provider.models:
@@ -1422,16 +1422,16 @@ def fuzzy_match_models(name):
                         chat_models.add(fq_model)
                         # Add short model name
                         chat_models.add(model)
-            
+
             # Add model aliases
             for alias, target in config.model_aliases.items():
                 chat_models.add(alias)
                 chat_models.add(target)
-        
+
     except Exception:
         # If config system fails, we'll fall back to discovery
         pass
-    
+
     # Second priority: Query actual endpoints for available models
     try:
         discovered_models = _discover_available_models()
@@ -1439,11 +1439,11 @@ def fuzzy_match_models(name):
     except Exception:
         # Discovery failed, continue with configured models only
         pass
-    
+
     # No LiteLLM fallback - only use configured and discovered models
 
     chat_models = sorted(chat_models)
-    
+
     # Check for model names containing the search term
     matching_models = [m for m in chat_models if name in m.lower()]
     if matching_models:
@@ -1459,15 +1459,15 @@ def fuzzy_match_models(name):
 def _discover_available_models():
     """Discover actually available models by querying provider APIs."""
     available_models = set()
-    
+
     try:
         from aider.config import ConfigManager
         config_manager = ConfigManager()
         config_path = config_manager.find_config_file()
-        
+
         if config_path:
             config = config_manager.load_config(config_path)
-            
+
             for endpoint_name, provider in config.providers.items():
                 try:
                     if provider.type == 'ollama':
@@ -1475,25 +1475,25 @@ def _discover_available_models():
                         for model in models:
                             available_models.add(f"{endpoint_name}/{model}")
                             available_models.add(model)
-                    
+
                     # Could add other providers here (OpenAI, Anthropic, etc.)
                     # but they don't typically have "installed" vs "available" distinction
-                    
+
                 except Exception:
                     # If individual provider query fails, continue with others
                     continue
-                    
+
     except Exception:
         # If config system fails entirely, return empty set
         pass
-    
+
     return available_models
 
 
 def _query_ollama_available_models(base_url):
     """Query Ollama API for actually installed models."""
     import requests
-    
+
     try:
         response = requests.get(f"{base_url}/api/tags", timeout=5)
         if response.status_code == 200:
@@ -1502,7 +1502,7 @@ def _query_ollama_available_models(base_url):
             return models
     except Exception:
         pass
-    
+
     return []
 
 
@@ -1512,7 +1512,7 @@ def print_matching_models(io, search):
     if not matches:
         io.tool_output(f'No models match "{search}".')
         return
-    
+
     # Load config to get aliases and provider info
     try:
         from aider.config import ConfigManager
@@ -1523,12 +1523,12 @@ def print_matching_models(io, search):
             config = config_manager.load_config(config_path)
     except Exception:
         config = None
-    
+
     # Organize models and aliases
     aliases = {}
     provider_models = {}
     reverse_aliases = {}  # model -> [aliases]
-    
+
     if config:
         # Get aliases
         aliases = config.model_aliases or {}
@@ -1537,7 +1537,7 @@ def print_matching_models(io, search):
             if target not in reverse_aliases:
                 reverse_aliases[target] = []
             reverse_aliases[target].append(alias)
-        
+
         # Organize by provider
         for endpoint_name, provider in config.providers.items():
             if provider.models:
@@ -1546,10 +1546,11 @@ def print_matching_models(io, search):
                     'models': set(provider.models),
                     'endpoint': endpoint_name
                 }
-    
-    io.tool_output(f'Models which match "{search}":')
+
+    if search:
+        io.tool_output(f'Models which match "{search}":')
     io.tool_output()
-    
+
     # Show models grouped by provider in table format
     if provider_models:
         for endpoint_name, provider_info in sorted(provider_models.items()):
@@ -1559,12 +1560,12 @@ def print_matching_models(io, search):
                 if (fq_model in matches or model in matches):
                     if search.lower() in model.lower() or search.lower() in fq_model.lower():
                         provider_matches.append(model)
-            
+
             if provider_matches:
                 provider_type = provider_info['type'].title()
                 endpoint_desc = f" ({endpoint_name})" if endpoint_name != provider_info['type'] else ""
                 io.tool_output(f"**{provider_type}{endpoint_desc}:**")
-                
+
                 # Create table
                 _print_models_table(io, provider_matches, provider_info['type'], reverse_aliases, endpoint_name, config_manager)
                 io.tool_output()
@@ -1573,60 +1574,60 @@ def _print_models_table(io, models, provider_type, reverse_aliases, endpoint_nam
     """Print a formatted table of models."""
     # Prepare table data
     table_data = []
-    
+
     for model in sorted(models):
         fq_model = f"{endpoint_name}/{model}"
-        
+
         # Get description (try to get from API metadata first)
         description = _get_model_description(model, provider_type, config_manager)
-        
+
         # Get aliases for this model
         model_aliases = []
         if fq_model in reverse_aliases:
             model_aliases.extend(reverse_aliases[fq_model])
         if model in reverse_aliases:
             model_aliases.extend(reverse_aliases[model])
-        
+
         alias_str = ", ".join(sorted(set(model_aliases))) if model_aliases else ""
-        
+
         table_data.append({
             'name': model,
             'description': description,
             'aliases': alias_str
         })
-    
+
     if not table_data:
         return
-    
+
     # Calculate column widths
     max_name = max(len(row['name']) for row in table_data)
     max_desc = max(len(row['description']) for row in table_data)
     max_aliases = max(len(row['aliases']) for row in table_data)
-    
-    # Ensure minimum widths and reasonable maximums  
+
+    # Ensure minimum widths and reasonable maximums
     name_width = max(12, min(max_name + 2, 35))
     desc_width = max(15, min(max_desc + 2, 50))
     alias_width = max(8, min(max_aliases + 2, 25))
-    
+
     # Print table header
     header = f"│ {'Name':<{name_width}} │ {'Description':<{desc_width}} │ {'Aliases':<{alias_width}} │"
     separator = f"├─{'─' * name_width}─┼─{'─' * desc_width}─┼─{'─' * alias_width}─┤"
     top_border = f"┌─{'─' * name_width}─┬─{'─' * desc_width}─┬─{'─' * alias_width}─┐"
     bottom_border = f"└─{'─' * name_width}─┴─{'─' * desc_width}─┴─{'─' * alias_width}─┘"
-    
+
     io.tool_output(top_border)
     io.tool_output(header)
     io.tool_output(separator)
-    
+
     # Print table rows
     for i, row in enumerate(table_data):
         # Truncate if too long
         name = row['name'][:name_width].ljust(name_width)
         desc = row['description'][:desc_width].ljust(desc_width)
         aliases = row['aliases'][:alias_width].ljust(alias_width)
-        
+
         io.tool_output(f"│ {name} │ {desc} │ {aliases} │")
-    
+
     io.tool_output(bottom_border)
 
 def _get_model_description(model_name: str, provider_type: str, config_manager=None) -> str:
@@ -1636,7 +1637,7 @@ def _get_model_description(model_name: str, provider_type: str, config_manager=N
         anthropic_display_name = _get_anthropic_display_name(model_name, config_manager)
         if anthropic_display_name:
             return anthropic_display_name
-    
+
     descriptions = {
         # OpenAI models
         'gpt-4o': 'GPT-4 Omni - latest multimodal model',
@@ -1644,36 +1645,36 @@ def _get_model_description(model_name: str, provider_type: str, config_manager=N
         'gpt-3.5-turbo': 'GPT-3.5 Turbo - fast and efficient',
         'o1-preview': 'O1 Preview - advanced reasoning',
         'o1-mini': 'O1 Mini - lightweight reasoning',
-        
+
         # Anthropic models
         'claude-sonnet-4-20250514': 'Claude 4 Sonnet - latest and most capable',
         'claude-opus-4-20250514': 'Claude 4 Opus - maximum intelligence',
         'claude-3-5-sonnet-20241022': 'Claude 3.5 Sonnet - balanced performance',
         'claude-3-5-haiku-20241022': 'Claude 3.5 Haiku - fast and efficient',
-        
+
         # Groq models
         'llama-3.1-8b-instant': 'Llama 3.1 8B - fast inference',
         'llama-3.3-70b-versatile': 'Llama 3.3 70B - versatile large model',
-        
+
         # Deepseek models
         'deepseek-chat': 'Deepseek Chat - general conversation',
         'deepseek-reasoner': 'Deepseek Reasoner - advanced reasoning',
-        
+
         # Gemini models
         'gemini-2.5-pro': 'Gemini 2.5 Pro - most advanced',
         'gemini-1.5-pro': 'Gemini 1.5 Pro - multimodal',
         'gemini-1.5-flash': 'Gemini 1.5 Flash - fast responses',
     }
-    
+
     # Try exact match first
     if model_name in descriptions:
         return descriptions[model_name]
-    
+
     # Try pattern matching for versioned models
     base_name = model_name.split('-')[0] + '-' + model_name.split('-')[1] if '-' in model_name else model_name
     if base_name in descriptions:
         return descriptions[base_name]
-    
+
     # Provider-specific patterns
     if provider_type == 'ollama':
         if 'qwen' in model_name.lower():
@@ -1684,46 +1685,46 @@ def _get_model_description(model_name: str, provider_type: str, config_manager=N
             return 'Microsoft Phi model'
         elif 'llama' in model_name.lower():
             return 'Meta Llama model'
-    
+
     return ""
 
 def _get_anthropic_display_name(model_name: str, config_manager=None) -> str:
     """Get live display name from Anthropic API."""
     if not config_manager:
         return ""
-    
+
     try:
         # Get Anthropic API key from config
         config = config_manager.load_config()
         if not config or 'anthropic' not in config.providers:
             return ""
-        
+
         anthropic_provider = config.providers['anthropic']
         api_key = anthropic_provider.api_key
         if not api_key:
             return ""
-        
+
         import requests
         headers = {
             'x-api-key': api_key,
             'Content-Type': 'application/json',
             'anthropic-version': '2023-06-01'
         }
-        
+
         # Query Anthropic API (with caching to avoid repeated calls)
         if not hasattr(_get_anthropic_display_name, '_cache'):
             response = requests.get('https://api.anthropic.com/v1/models', headers=headers, timeout=5)
             if response.status_code == 200:
                 data = response.json()
                 _get_anthropic_display_name._cache = {
-                    model['id']: model.get('display_name', '') 
+                    model['id']: model.get('display_name', '')
                     for model in data.get('data', [])
                 }
             else:
                 _get_anthropic_display_name._cache = {}
-        
+
         return _get_anthropic_display_name._cache.get(model_name, "")
-        
+
     except Exception:
         return ""
 

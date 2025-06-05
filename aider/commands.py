@@ -69,6 +69,14 @@ class Commands:
         self.args = args
         self.verbose = verbose
 
+        # Validate model from command line args if present
+        if args and hasattr(args, 'model') and args.model:
+            valid, error = models.endpoint_model_manager.validate_model_spec(args.model)
+            if not valid:
+                self.io.tool_error(f"Invalid model '{args.model}': {error}")
+                self.io.tool_output("Use /models to search for available models.")
+                sys.exit(1)
+
         self.verify_ssl = verify_ssl
         if voice_language == "auto":
             voice_language = None
@@ -86,6 +94,17 @@ class Commands:
         "Switch the Main Model to a new LLM"
 
         model_name = args.strip()
+        if not model_name:
+            self.io.tool_error("Please provide a model name.")
+            return
+
+        # Validate the model first
+        valid, error = models.endpoint_model_manager.validate_model_spec(model_name)
+        if not valid:
+            self.io.tool_error(f"Invalid model '{model_name}': {error}")
+            self.io.tool_output("Use /models to search for available models.")
+            return
+
         model = models.Model(
             model_name,
             editor_model=self.coder.main_model.editor_model.name,
@@ -207,7 +226,7 @@ class Commands:
         if args:
             models.print_matching_models(self.io, args)
         else:
-            self.io.tool_output("Please provide a partial model name to search for.")
+            models.print_matching_models(self.io, "")
 
     def cmd_web(self, args, return_content=False):
         "Scrape a webpage, convert to markdown and send in a message"
