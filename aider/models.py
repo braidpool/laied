@@ -1381,40 +1381,60 @@ def check_for_dependencies(io, model_name):
 
 
 def fuzzy_match_models(name):
+    """
+    Find models that match the search term, using only configured and actually available models.
+    
+    Search order:
+    1. Models from .aider.yml configuration 
+    2. Actually available models (by querying APIs)
+    
+    No fallback to LiteLLM database to avoid unusable models.
+    """
     name = name.lower()
-
     chat_models = set()
-    model_metadata = list(litellm.model_cost.items())
-    model_metadata += list(model_info_manager.local_model_metadata.items())
-
-    for orig_model, attrs in model_metadata:
-        model = orig_model.lower()
-        if attrs.get("mode") != "chat":
-            continue
-        provider = attrs.get("litellm_provider", "").lower()
-        if not provider:
-            continue
-        provider += "/"
-
-        if model.startswith(provider):
-            fq_model = orig_model
-        else:
-            fq_model = provider + orig_model
-
-        chat_models.add(fq_model)
-        chat_models.add(orig_model)
+    
+    # First priority: Get models from configuration
+    try:
+        from aider.config import ConfigManager
+        config_manager = ConfigManager()
+        config_path = config_manager.find_config_file()
+        
+        if config_path:
+            config = config_manager.load_config(config_path)
+            
+            # Add configured models from each provider
+            for endpoint_name, provider in config.providers.items():
+                if provider.models:
+                    for model in provider.models:
+                        # Add fully qualified model name using endpoint name
+                        fq_model = f"{endpoint_name}/{model}"
+                        chat_models.add(fq_model)
+                        # Add short model name
+                        chat_models.add(model)
+            
+            # Add model aliases
+            for alias, target in config.model_aliases.items():
+                chat_models.add(alias)
+                chat_models.add(target)
+        
+    except Exception:
+        # If config system fails, we'll fall back to discovery
+        pass
+    
+    # Second priority: Query actual endpoints for available models
+    try:
+        discovered_models = _discover_available_models()
+        chat_models.update(discovered_models)
+    except Exception:
+        # Discovery failed, continue with configured models only
+        pass
+    
+    # No LiteLLM fallback - only use configured and discovered models
 
     chat_models = sorted(chat_models)
-    # exactly matching model
-    # matching_models = [
-    #    (fq,m) for fq,m in chat_models
-    #    if name == fq or name == m
-    # ]
-    # if matching_models:
-    #    return matching_models
-
-    # Check for model names containing the name
-    matching_models = [m for m in chat_models if name in m]
+    
+    # Check for model names containing the search term
+    matching_models = [m for m in chat_models if name in m.lower()]
     if matching_models:
         return sorted(set(matching_models))
 
@@ -1423,6 +1443,56 @@ def fuzzy_match_models(name):
     matching_models = difflib.get_close_matches(name, models, n=3, cutoff=0.8)
 
     return sorted(set(matching_models))
+
+
+def _discover_available_models():
+    """Discover actually available models by querying provider APIs."""
+    available_models = set()
+    
+    try:
+        from aider.config import ConfigManager
+        config_manager = ConfigManager()
+        config_path = config_manager.find_config_file()
+        
+        if config_path:
+            config = config_manager.load_config(config_path)
+            
+            for endpoint_name, provider in config.providers.items():
+                try:
+                    if provider.type == 'ollama':
+                        models = _query_ollama_available_models(provider.base_url or 'http://localhost:11434')
+                        for model in models:
+                            available_models.add(f"{endpoint_name}/{model}")
+                            available_models.add(model)
+                    
+                    # Could add other providers here (OpenAI, Anthropic, etc.)
+                    # but they don't typically have "installed" vs "available" distinction
+                    
+                except Exception:
+                    # If individual provider query fails, continue with others
+                    continue
+                    
+    except Exception:
+        # If config system fails entirely, return empty set
+        pass
+    
+    return available_models
+
+
+def _query_ollama_available_models(base_url):
+    """Query Ollama API for actually installed models."""
+    import requests
+    
+    try:
+        response = requests.get(f"{base_url}/api/tags", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            models = [model['name'] for model in data.get('models', [])]
+            return models
+    except Exception:
+        pass
+    
+    return []
 
 
 def print_matching_models(io, search):

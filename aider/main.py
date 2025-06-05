@@ -940,13 +940,32 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             )
             return 1
 
-    main_model = models.Model(
-        args.model,
-        weak_model=args.weak_model,
-        editor_model=args.editor_model,
-        editor_edit_format=args.editor_edit_format,
-        verbose=args.verbose,
-    )
+    # Use ConfigBridge to properly resolve model names from config files
+    from aider.config_bridge import config_bridge
+    
+    try:
+        # Initialize the config bridge with current args
+        config_bridge.load_configuration()
+        
+        # Create the main model using the config-aware system
+        main_model = config_bridge.create_model(
+            args.model,
+            weak_model=args.weak_model,
+            editor_model=args.editor_model,
+            editor_edit_format=args.editor_edit_format,
+            verbose=args.verbose,
+        )
+    except Exception as e:
+        # Fallback to direct Model creation if config bridge fails
+        if args.verbose:
+            io.tool_output(f"Config bridge failed, using legacy model creation: {e}")
+        main_model = models.Model(
+            args.model,
+            weak_model=args.weak_model,
+            editor_model=args.editor_model,
+            editor_edit_format=args.editor_edit_format,
+            verbose=args.verbose,
+        )
 
     # Check if deprecated remove_reasoning is set
     if main_model.remove_reasoning is not None:

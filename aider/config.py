@@ -153,7 +153,7 @@ class AiderConfig:
         openai_key = os.getenv("OPENAI_API_KEY")
         openai_base = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
         if openai_key:
-            self.providers["openai_default"] = ProviderConfig(
+            self.providers["openai"] = ProviderConfig(
                 type="openai",
                 api_key=openai_key,
                 base_url=openai_base,
@@ -163,7 +163,7 @@ class AiderConfig:
         # Anthropic provider
         anthropic_key = os.getenv("ANTHROPIC_API_KEY")
         if anthropic_key:
-            self.providers["anthropic_default"] = ProviderConfig(
+            self.providers["anthropic"] = ProviderConfig(
                 type="anthropic",
                 api_key=anthropic_key,
                 models=["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"]
@@ -171,7 +171,7 @@ class AiderConfig:
 
         # Ollama provider
         ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-        self.providers["ollama_default"] = ProviderConfig(
+        self.providers["ollama"] = ProviderConfig(
             type="ollama",
             base_url=ollama_host,
             models=["llama3:8b", "codellama:7b"]
@@ -190,7 +190,7 @@ class AiderConfig:
             api_key = os.getenv(key_env)
             if api_key:
                 base_url = os.getenv(base_env) if base_env else None
-                self.providers[f"{provider_type}_default"] = ProviderConfig(
+                self.providers[provider_type] = ProviderConfig(
                     type=provider_type,
                     api_key=api_key,
                     base_url=base_url
@@ -563,33 +563,73 @@ class ConfigManager:
                     config['models'] = models
                     print(f"  Found {len(models)} models")
                 else:
-                    # Use default models if discovery fails
-                    config['models'] = self._get_default_models(provider_type)
-                    print(f"  Using default models (discovery failed)")
+                    print(f"  No models discovered for {provider_type} (API may be unavailable)")
+                    config['models'] = []
             except Exception as e:
                 print(f"  Model discovery failed for {provider_type}: {e}")
-                config['models'] = self._get_default_models(provider_type)
+                config['models'] = []
             
             # Small delay to avoid rate limiting
             time.sleep(0.5)
         
         return detected_providers
 
+    def _filter_chat_models(self, models: List[str]) -> List[str]:
+        """Filter models to only include those suitable for chat completion."""
+        # Patterns for non-chat models that should be excluded
+        exclude_patterns = [
+            # Audio/TTS models
+            'tts', 'whisper', 'speech', 'audio',
+            # Image generation models  
+            'dall-e', 'image', 'vision-only', '-image-',
+            # Embeddings models
+            'embedding', 'embed',
+            # Safety/guard models
+            'guard', 'safety', 'moderation', 'prompt-guard',
+            # Translation models
+            'translate',
+            # Fine-tuning models
+            'tuning',
+            # Specific unusable/experimental models
+            'playai-tts', 'distil-whisper', 'allam-2-7b',
+            # Preview/experimental image generation
+            'preview-image-generation', 'exp-image-generation',
+        ]
+        
+        filtered_models = []
+        for model in models:
+            model_lower = model.lower()
+            # Skip if model name contains any exclude pattern
+            if any(pattern in model_lower for pattern in exclude_patterns):
+                continue
+            # Skip if model name ends with non-chat suffixes
+            if any(model_lower.endswith(suffix) for suffix in ['-tts', '-stt', '-guard', '-embedding']):
+                continue
+            filtered_models.append(model)
+            
+        return filtered_models
+
     def _query_provider_models(self, provider_type: str, config: Dict[str, str]) -> List[str]:
         """Query a specific provider for available models."""
         import requests
         
         if provider_type == 'openai':
-            return self._query_openai_models(config)
+            models = self._query_openai_models(config)
         elif provider_type == 'anthropic':
-            return self._query_anthropic_models(config)
+            models = self._query_anthropic_models(config)
         elif provider_type == 'groq':
-            return self._query_groq_models(config)
+            models = self._query_groq_models(config)
         elif provider_type == 'ollama':
-            return self._query_ollama_models(config)
-        # Add more providers as needed
+            models = self._query_ollama_models(config)
+        elif provider_type == 'deepseek':
+            models = self._query_deepseek_models(config)
+        elif provider_type == 'gemini':
+            models = self._query_gemini_models(config)
+        else:
+            models = []
         
-        return []
+        # Filter out non-chat models
+        return self._filter_chat_models(models)
 
     def _query_openai_models(self, config: Dict[str, str]) -> List[str]:
         """Query OpenAI API for available models."""
@@ -620,13 +660,22 @@ class ConfigManager:
 
     def _query_anthropic_models(self, config: Dict[str, str]) -> List[str]:
         """Query Anthropic API for available models (Claude models are well-known)."""
-        # Anthropic doesn't have a public models endpoint, so we use known models
+        # Anthropic doesn't have a public models endpoint, so we use comprehensive known models
         return [
+            # Claude 4 series (2025)
+            "claude-sonnet-4-20250514",
+            "claude-opus-4-20250514",
+            # Claude 3.5 series
             "claude-3-5-sonnet-20241022",
-            "claude-3-5-haiku-20241022", 
+            "claude-3-5-sonnet-20240620",
+            "claude-3-5-haiku-20241022",
+            # Claude 3 series
             "claude-3-opus-20240229",
             "claude-3-sonnet-20240229",
-            "claude-3-haiku-20240307"
+            "claude-3-haiku-20240307",
+            # Claude 2 series (legacy)
+            "claude-2.1",
+            "claude-2"
         ]
 
     def _query_groq_models(self, config: Dict[str, str]) -> List[str]:
@@ -670,15 +719,69 @@ class ConfigManager:
         
         return []
 
+    def _query_deepseek_models(self, config: Dict[str, str]) -> List[str]:
+        """Query Deepseek API for available models."""
+        import requests
+        
+        api_key = config.get('api_key')
+        if not api_key:
+            return []
+        
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        try:
+            # Try Deepseek's OpenAI-compatible models endpoint
+            response = requests.get("https://api.deepseek.com/v1/models", headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                models = [model['id'] for model in data.get('data', [])]
+                return sorted(models)
+        except Exception:
+            pass
+        
+        return []
+
+    def _query_gemini_models(self, config: Dict[str, str]) -> List[str]:
+        """Query Gemini API for available models."""
+        import requests
+        
+        api_key = config.get('api_key')
+        if not api_key:
+            return []
+        
+        try:
+            # Try Google AI Studio models endpoint
+            response = requests.get(
+                f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
+                timeout=10
+            )
+            if response.status_code == 200:
+                data = response.json()
+                # Extract model names that support generateContent
+                models = []
+                for model in data.get('models', []):
+                    model_name = model.get('name', '').replace('models/', '')
+                    supported_methods = model.get('supportedGenerationMethods', [])
+                    if 'generateContent' in supported_methods and model_name.startswith('gemini'):
+                        models.append(model_name)
+                return sorted(models)
+        except Exception:
+            pass
+        
+        return []
+
     def _get_default_models(self, provider_type: str) -> List[str]:
         """Get default models for a provider when discovery fails."""
         defaults = {
             'openai': ["gpt-4o", "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"],
-            'anthropic': ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
+            'anthropic': ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
             'groq': ["llama-3.1-8b-instant", "mixtral-8x7b-32768"],
             'ollama': ["llama3:8b", "codellama:7b", "mistral:7b"],
-            'deepseek': ["deepseek-chat", "deepseek-coder"],
-            'gemini': ["gemini-1.5-pro", "gemini-1.5-flash"],
+            'deepseek': ["deepseek-chat", "deepseek-coder", "deepseek-reasoner"],
+            'gemini': ["gemini-2.5-pro", "gemini-1.5-pro", "gemini-1.5-flash"],
             'xai': ["grok-1"],
             'cohere': ["command-r", "command-r-plus"]
         }
@@ -735,7 +838,7 @@ class ConfigManager:
             content += "providers:\n"
             
             for provider_type, config in detected_providers.items():
-                endpoint_name = f"{provider_type}_main"
+                endpoint_name = provider_type  # Use simple provider name, not provider_type_main
                 content += f"  {endpoint_name}:\n"
                 content += f"    type: {provider_type}\n"
                 
@@ -756,18 +859,18 @@ class ConfigManager:
         else:
             # No environment variables detected, create example config
             content += """providers:
-  openai_main:
+  openai:
     type: openai
     api_key: "sk-your-openai-key-here"
     base_url: "https://api.openai.com/v1"
     models: ["gpt-4o", "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"]
     
-  anthropic_main:
+  anthropic:
     type: anthropic
     api_key: "sk-ant-your-key-here"
     models: ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"]
     
-  local_ollama:
+  ollama:
     type: ollama
     base_url: "http://localhost:11434"
     models: ["llama3:8b", "codellama:7b", "mistral:7b"]
@@ -776,9 +879,9 @@ class ConfigManager:
         
         content += """# Model aliases for convenience
 model_aliases:
-  sonnet: "anthropic_main/claude-3-5-sonnet-20241022"
-  gpt4o: "openai_main/gpt-4o"
-  gpt4: "openai_main/gpt-4"
+  sonnet: "anthropic/claude-3-5-sonnet-20241022"
+  gpt4o: "openai/gpt-4o"
+  gpt4: "openai/gpt-4"
 
 # Default model to use
 model: "sonnet"
@@ -810,29 +913,29 @@ encoding: "utf-8"
 # Copy this to .aider.yml and customize as needed
 
 providers:
-  openai_main:
+  openai:
     type: openai
     api_key: "sk-your-openai-key-here"
     base_url: "https://api.openai.com/v1"
     models: ["gpt-4", "gpt-4o", "gpt-3.5-turbo"]
     
-  anthropic_main:
+  anthropic:
     type: anthropic
     api_key: "sk-ant-your-key-here"
     models: ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"]
     
-  local_ollama:
+  ollama:
     type: ollama
     base_url: "http://localhost:11434"
     models: ["llama3:8b", "codellama:7b"]
 
 model_aliases:
-  sonnet: "anthropic_main/claude-3-5-sonnet-20241022"
-  gpt4: "openai_main/gpt-4"
-  gpt4o: "openai_main/gpt-4o"
+  sonnet: "anthropic/claude-3-5-sonnet-20241022"
+  gpt4: "openai/gpt-4"
+  gpt4o: "openai/gpt-4o"
 
 model: "sonnet"
-weak_model: "openai_main/gpt-3.5-turbo"
+weak_model: "openai/gpt-3.5-turbo"
 
 git:
   auto_commits: true
