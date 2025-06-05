@@ -79,21 +79,6 @@ For help and documentation: https://aider.chat/docs/
         help="Specify what edit format the LLM should use"
     )
 
-    # Common API key arguments for backwards compatibility
-    parser.add_argument(
-        "--openai-api-key",
-        help="Specify the OpenAI API key (consider using config file instead)"
-    )
-
-    parser.add_argument(
-        "--anthropic-api-key",
-        help="Specify the Anthropic API key (consider using config file instead)"
-    )
-
-    parser.add_argument(
-        "--openai-api-base",
-        help="Specify the OpenAI API base URL (consider using config file instead)"
-    )
 
     # Essential operational modes
     parser.add_argument(
@@ -302,7 +287,10 @@ For help and documentation: https://aider.chat/docs/
         map_refresh="auto",
         map_multiplier_no_files=2.0,
         
-        # API settings
+        # Legacy API settings (removed from CLI)
+        openai_api_key=None,
+        anthropic_api_key=None,
+        openai_api_base=None,
         openai_api_type=None,
         openai_api_version=None,
         openai_organization_id=None,

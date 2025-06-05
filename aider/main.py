@@ -448,6 +448,84 @@ def sanity_check_repo(repo, io):
     return False
 
 
+def display_config_info(args, default_config_files):
+    """Display configuration file being used and CLI overrides."""
+    
+    # Find which config file is actually being used
+    config_file_used = None
+    if hasattr(args, 'config') and args.config:
+        config_file_used = args.config
+    else:
+        # Check for existing config files in order
+        for config_file in reversed(default_config_files):  # reversed because main.py reverses the list
+            config_path = Path(config_file)
+            if config_path.exists():
+                config_file_used = str(config_path)
+                break
+    
+    # Check for .aider.yml files too
+    if not config_file_used:
+        search_paths = [Path.cwd()]
+        try:
+            import git
+            repo = git.Repo(search_paths[0], search_parent_directories=True)
+            search_paths.append(Path(repo.working_tree_dir))
+        except:
+            pass
+        search_paths.append(Path.home())
+        
+        for path in search_paths:
+            for config_name in [".aider.yml", ".aider.yaml"]:
+                config_file = path / config_name
+                if config_file.exists():
+                    config_file_used = str(config_file)
+                    break
+            if config_file_used:
+                break
+
+    # Display config file info
+    if config_file_used:
+        print(f"Using configuration file: {config_file_used}")
+    else:
+        print("No configuration file found, using defaults")
+    
+    # Track and display CLI overrides
+    cli_overrides = []
+    
+    # Check for model overrides
+    if hasattr(args, 'model') and args.model:
+        cli_overrides.append(f"--model {args.model}")
+    
+    if hasattr(args, 'weak_model') and args.weak_model:
+        cli_overrides.append(f"--weak-model {args.weak_model}")
+    
+    if hasattr(args, 'edit_format') and args.edit_format:
+        cli_overrides.append(f"--edit-format {args.edit_format}")
+    
+    # Check boolean flags that might override config
+    if hasattr(args, 'auto_commits') and args.auto_commits is not None:
+        if args.auto_commits:
+            cli_overrides.append("--auto-commits")
+        else:
+            cli_overrides.append("--no-auto-commits")
+    
+    if hasattr(args, 'pretty') and not args.pretty:  # Only show if disabled (since True is default)
+        cli_overrides.append("--no-pretty")
+    
+    if hasattr(args, 'verbose') and args.verbose:
+        cli_overrides.append("--verbose")
+    
+    if hasattr(args, 'dry_run') and args.dry_run:
+        cli_overrides.append("--dry-run")
+    
+    if hasattr(args, 'vim') and args.vim:
+        cli_overrides.append("--vim")
+    
+    # Display CLI overrides
+    if cli_overrides:
+        print(f"CLI overrides: {' '.join(cli_overrides)}")
+
+
 def main(argv=None, input=None, output=None, force_git_root=None, return_coder=False):
     report_uncaught_exceptions()
 
@@ -521,6 +599,9 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
         parser.prog = "aider"
         print(shtab.complete(parser, shell=args.shell_completions))
         sys.exit(0)
+
+    # Display configuration file being used and CLI overrides
+    display_config_info(args, default_config_files)
 
     if git is None:
         args.git = False
