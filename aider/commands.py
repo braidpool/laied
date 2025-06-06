@@ -16,7 +16,6 @@ from prompt_toolkit.document import Document
 from aider import models, prompts, voice
 from aider.editor import pipe_editor
 from aider.format_settings import format_settings
-from aider.help import Help, install_help_extra
 from aider.io import CommandCompletionException
 from aider.llm import litellm
 from aider.repo import ANY_GIT_ERROR
@@ -78,7 +77,6 @@ class Commands:
         self.voice_format = voice_format
         self.voice_input_device = voice_input_device
 
-        self.help = None
         self.editor = editor
 
         # Store the original read-only filenames provided via args.read
@@ -1078,72 +1076,36 @@ class Commands:
         for file in chat_files:
             self.io.tool_output(f"  {file}")
 
-    def basic_help(self):
-        commands = sorted(self.get_commands())
-        pad = max(len(cmd) for cmd in commands)
-        pad = "{cmd:" + str(pad) + "}"
-        for cmd in commands:
-            cmd_method_name = f"cmd_{cmd[1:]}".replace("-", "_")
-            cmd_method = getattr(self, cmd_method_name, None)
-            cmd = pad.format(cmd=cmd)
-            if cmd_method:
-                description = cmd_method.__doc__
-                self.io.tool_output(f"{cmd} {description}")
-            else:
-                self.io.tool_output(f"{cmd} No description available.")
-        self.io.tool_output()
-        self.io.tool_output("Use `/help <question>` to ask questions about how to use aider.")
-
     def cmd_help(self, args):
         "Ask questions about aider"
 
         if not args.strip():
-            self.basic_help()
+            commands = sorted(self.get_commands())
+            pad = max(len(cmd) for cmd in commands)
+            pad = "{cmd:" + str(pad) + "}"
+            for cmd in commands:
+                cmd_method_name = f"cmd_{cmd[1:]}".replace("-", "_")
+                cmd_method = getattr(self, cmd_method_name, None)
+                cmd = pad.format(cmd=cmd)
+                if cmd_method:
+                    description = cmd_method.__doc__
+                    self.io.tool_output(f"{cmd} {description}")
+                else:
+                    self.io.tool_output(f"{cmd} No description available.")
+            self.io.tool_output()
+            self.io.tool_output("Use `/help <question>` to ask questions about how to use aider.")
             return
 
-        self.coder.event("interactive help")
-        from aider.coders.base_coder import Coder
+        self.io.tool_output(f"""# Question: {args}
 
-        if not self.help:
-            res = install_help_extra(self.io)
-            if not res:
-                self.io.tool_error("Unable to initialize interactive help.")
-                return
+For help with this question, please visit the online documentation at:
+https://aider.chat/docs/
 
-            self.help = Help()
-
-        coder = Coder.create(
-            io=self.io,
-            from_coder=self.coder,
-            edit_format="help",
-            summarize_from_coder=False,
-            map_tokens=512,
-            map_mul_no_files=1,
-        )
-        user_msg = self.help.ask(args)
-        user_msg += """
-# Announcement lines from when this session of aider was launched:
-
-"""
-        user_msg += "\n".join(self.coder.get_announcements()) + "\n"
-
-        coder.run(user_msg, preproc=False)
-
-        if self.coder.repo_map:
-            map_tokens = self.coder.repo_map.max_map_tokens
-            map_mul_no_files = self.coder.repo_map.map_mul_no_files
-        else:
-            map_tokens = 0
-            map_mul_no_files = 1
-
-        raise SwitchCoder(
-            edit_format=self.coder.edit_format,
-            summarize_from_coder=False,
-            from_coder=coder,
-            map_tokens=map_tokens,
-            map_mul_no_files=map_mul_no_files,
-            show_announcements=False,
-        )
+You can also:
+- Join our Discord community: https://discord.gg/Y7X7bhMQFV
+- Search GitHub issues: https://github.com/Aider-AI/aider/issues
+- Check the FAQ: https://aider.chat/docs/faq.html
+""")
 
     def completions_ask(self):
         raise CommandCompletionException()
