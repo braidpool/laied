@@ -1396,7 +1396,7 @@ def fuzzy_match_models(name):
     Find models that match the search term, using only configured and actually available models.
     
     Search order:
-    1. Models from .aider.yml configuration 
+    1. Models from .laied.conf.yml configuration 
     2. Actually available models (by querying APIs)
     
     No fallback to LiteLLM database to avoid unusable models.

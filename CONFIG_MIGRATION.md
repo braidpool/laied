@@ -1,8 +1,8 @@
-# Aider Configuration System Migration Guide
+# Laied Configuration System Migration Guide
 
 ## Overview
 
-Aider now supports a unified configuration system through a single `.aider.yml` file, which replaces the complex multi-source configuration approach (CLI args, environment variables, and multiple config files). This new system adds support for **multiple endpoints per provider type** while maintaining backwards compatibility.
+Laied now supports a unified configuration system through a single `.laied.conf.yml` file, which replaces the complex multi-source configuration approach (CLI args, environment variables, and multiple config files). This new system adds support for **multiple endpoints per provider type** while maintaining backwards compatibility.
 
 ## Key Benefits
 
@@ -17,7 +17,7 @@ Aider now supports a unified configuration system through a single `.aider.yml` 
 ### Basic Structure
 
 ```yaml
-# .aider.yml - Unified configuration file
+# .laied.conf.yml - Unified configuration file
 
 # Multiple endpoints per provider type
 providers:
@@ -67,7 +67,7 @@ model_settings:
 # Other settings
 git:
   auto_commits: true
-  commit_prefix: "aider: "
+  commit_prefix: "laied: "
 
 output:
   user_input_color: "#00cc00"
@@ -156,13 +156,13 @@ export OPENAI_API_KEY="sk-..."
 export OLLAMA_HOST="http://localhost:11434"
 
 # Command line
-aider --model gpt-4 --weak-model gpt-3.5-turbo
+laied --model gpt-4 --weak-model gpt-3.5-turbo
 ```
 
 ### 2. New Unified System
 
 ```yaml
-# .aider.yml
+# .laied.conf.yml
 providers:
   openai_default:
     type: openai
@@ -177,7 +177,7 @@ weak_model: "openai_default/gpt-3.5-turbo"
 
 ```bash
 # Simplified command line
-aider  # Uses configuration file
+laied  # Uses configuration file
 ```
 
 ## Commands
@@ -185,23 +185,23 @@ aider  # Uses configuration file
 ### Initialize Configuration
 
 ```bash
-aider --init-config                 # Create sample .aider.yml
-aider --init-config --path mydir/   # Create in specific location
+laied --init-config                 # Create sample .laied.conf.yml
+laied --init-config --path mydir/   # Create in specific location
 ```
 
 ### Validate Configuration
 
 ```bash
-aider --validate-config             # Check configuration file
-aider --show-config                 # Show current settings
-aider --list-models                 # Show available models
+laied --validate-config             # Check configuration file
+laied --show-config                 # Show current settings
+laied --list-models                 # Show available models
 ```
 
 ### Migration Assistance
 
 ```bash
-aider --migrate-config              # Convert old settings (planned)
-aider --help-config                 # Show configuration help
+laied --migrate-config              # Convert old settings (planned)
+laied --help-config                 # Show configuration help
 ```
 
 ## Advanced Features
@@ -233,7 +233,7 @@ providers:
 
 model: "dev_ollama/llama3:8b"       # Fast local model
 
-# Production (separate .aider.yml)
+# Production (separate .laied.conf.yml)
 providers:
   prod_openai:
     type: openai
@@ -247,12 +247,12 @@ model: "prod_anthropic/claude-3-5-sonnet-20241022"  # Production model
 
 ## Configuration File Locations
 
-Aider searches for configuration files in this order:
+Laied searches for configuration files in this order:
 
 1. Path specified with `--config`
-2. `.aider.yml` in current directory
-3. `.aider.yml` in git repository root
-4. `.aider.yml` in home directory
+2. `.laied.conf.yml` in current directory
+3. `.laied.conf.yml` in git repository root
+4. `.laied.conf.yml` in home directory
 
 ## Breaking Changes
 
@@ -276,24 +276,24 @@ The new configuration system consists of:
 
 1. **Try the new system**:
    ```bash
-   aider --init-config
-   # Edit .aider.yml with your API keys and preferences
-   aider
+   laied --init-config
+   # Edit .laied.conf.yml with your API keys and preferences
+   laied
    ```
 
 2. **Validate your configuration**:
    ```bash
-   aider --validate-config
-   aider --list-models
+   laied --validate-config
+   laied --list-models
    ```
 
 3. **Use multiple endpoints**:
    ```yaml
-   # Add multiple providers in .aider.yml
+   # Add multiple providers in .laied.conf.yml
    providers:
      openai_main: { type: openai, api_key: "sk-main..." }
      openai_backup: { type: openai, api_key: "sk-backup..." }
    model: "openai_main/gpt-4"
    ```
 
-The new configuration system provides a much cleaner, more powerful way to manage aider's settings while maintaining full backwards compatibility with existing workflows.
+The new configuration system provides a much cleaner, more powerful way to manage laied's settings while maintaining full backwards compatibility with existing workflows.

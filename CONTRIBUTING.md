@@ -42,7 +42,7 @@ All contributors will be asked to complete the agreement as part of the PR proce
 ### Clone the Repository
 
 ```
-git clone https://github.com/Aider-AI/aider.git
+git clone https://github.com/braidpool/laied.git
 cd aider
 ```
 

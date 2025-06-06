@@ -21,7 +21,7 @@ def install_from_main_branch(io):
         io,
         None,
         "Install the development version of aider from the main branch?",
-        ["git+https://github.com/Aider-AI/aider.git"],
+        ["git+https://github.com/braidpool/laied.git"],
         self_update=True,
     )
 

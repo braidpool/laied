@@ -24,8 +24,8 @@ from scripts.homepage import get_badges_md
 text = get_badges_md()
 cog.out(text)
 ]]]-->
-  <a href="https://github.com/Aider-AI/aider/stargazers"><img alt="GitHub Stars" title="Total number of GitHub stars the Aider project has received"
-src="https://img.shields.io/github/stars/Aider-AI/aider?style=flat-square&logo=github&color=f1c40f&labelColor=555555"/></a>
+  <a href="https://github.com/braidpool/laied/stargazers"><img alt="GitHub Stars" title="Total number of GitHub stars the Laied project has received"
+src="https://img.shields.io/github/stars/braidpool/laied?style=flat-square&logo=github&color=f1c40f&labelColor=555555"/></a>
   <a href="https://pypi.org/project/aider-chat/"><img alt="PyPI Downloads" title="Total number of installations via pip from PyPI"
 src="https://img.shields.io/badge/📦%20Installs-2.4M-2ecc71?style=flat-square&labelColor=555555"/></a>
   <img alt="Tokens per week" title="Number of tokens processed weekly by Aider users"
@@ -134,7 +134,7 @@ See the [installation instructions](https://aider.chat/docs/install.html) and [u
 
 ### Community & Resources
 - [LLM Leaderboards](https://aider.chat/docs/leaderboards/)
-- [GitHub Repository](https://github.com/Aider-AI/aider)
+- [GitHub Repository](https://github.com/braidpool/laied)
 - [Discord Community](https://discord.gg/Y7X7bhMQFV)
 - [Release notes](https://aider.chat/HISTORY.html)
 - [Blog](https://aider.chat/blog/)

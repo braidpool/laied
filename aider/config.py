@@ -358,6 +358,61 @@ class ConfigManager:
         
         return None
 
+    def check_and_migrate_old_config(self) -> Optional[Path]:
+        """
+        Check for old .aider.yml files and offer to migrate them.
+        
+        Returns:
+            Path to migrated config file if migration occurred, None otherwise
+        """
+        old_config_names = [".aider.yml", ".aider.yaml"]
+        
+        # Check same locations as find_config_file
+        search_paths = [Path.cwd()]
+        
+        # Add git repository root if we're in one
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            if result.returncode == 0:
+                git_root = Path(result.stdout.strip())
+                if git_root != Path.cwd():
+                    search_paths.append(git_root)
+        except:
+            pass
+        
+        search_paths.append(Path.home())
+        
+        # Look for old config files
+        for path in search_paths:
+            for old_name in old_config_names:
+                old_file = path / old_name
+                if old_file.exists():
+                    new_file = path / ".laied.conf.yml"
+                    if not new_file.exists():
+                        print(f"\n⚠️  Found old configuration file: {old_file}")
+                        print(f"   Would you like to migrate it to {new_file}? (y/n): ", end="", flush=True)
+                        try:
+                            response = input().strip().lower()
+                            if response == 'y':
+                                import shutil
+                                shutil.copy2(old_file, new_file)
+                                print(f"✅ Migrated configuration to {new_file}")
+                                print(f"   You can now delete the old {old_file} file.\n")
+                                return new_file
+                        except (KeyboardInterrupt, EOFError):
+                            print("\n   Migration cancelled.")
+                    else:
+                        print(f"\n⚠️  Found old config {old_file} but new config already exists at {new_file}")
+                        print(f"   Consider removing the old file to avoid confusion.\n")
+        
+        return None
+
     def load_config(self, config_path: Optional[Union[str, Path]] = None) -> AiderConfig:
         """
         Load configuration from file or create default configuration.
@@ -374,6 +429,12 @@ class ConfigManager:
                 raise FileNotFoundError(f"Configuration file not found: {config_path}")
         else:
             config_path = self.find_config_file()
+            
+            # If no new config found, check for old config files to migrate
+            if not config_path:
+                migrated_path = self.check_and_migrate_old_config()
+                if migrated_path:
+                    config_path = migrated_path
         
         if config_path:
             self.config_path = config_path
@@ -497,7 +558,7 @@ class ConfigManager:
             # Find the sample file in the aider package
             import aider
             aider_dir = Path(aider.__file__).parent.parent
-            sample_file = aider_dir / "aider.yml.sample"
+            sample_file = aider_dir / "laied.conf.yml.sample"
             
             if sample_file.exists():
                 # Copy the sample file
@@ -992,7 +1053,7 @@ encoding: "utf-8"
     def _create_basic_config_file(self, config_path: Path):
         """Create a basic configuration file if sample is not available."""
         basic_config = """# Aider Configuration File
-# Copy this to .aider.yml and customize as needed
+# Copy this to .laied.conf.yml and customize as needed
 
 providers:
   openai:

@@ -14,7 +14,7 @@ def get_parser(default_config_files=None, git_root=None):
     """
     Simplified argument parser for aider's unified configuration system.
     
-    Most configuration options are now handled through .aider.yml files.
+    Most configuration options are now handled through .laied.conf.yml files.
     This parser only handles essential operational arguments and backwards
     compatibility for the most common CLI options.
     """

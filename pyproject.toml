@@ -1,7 +1,7 @@
 
 [project]
-name = "aider-chat"
-description = "Aider is AI pair programming in your terminal"
+name = "laied"
+description = "Laied is AI pair programming in your terminal"
 readme = "README.md"
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -20,7 +20,11 @@ requires-python = ">=3.10,<3.14"
 dynamic = ["dependencies", "optional-dependencies", "version"]
 
 [project.urls]
-Homepage = "https://github.com/Aider-AI/aider"
+Homepage = "https://github.com/braidpool/laied"
+Documentation = "https://aider.chat/docs/"
+Repository = "https://github.com/braidpool/laied"
+Issues = "https://github.com/braidpool/laied/issues"
+Changelog = "https://github.com/braidpool/laied/blob/main/HISTORY.md"
 
 [project.scripts]
 laied = "aider.main:main"
@@ -30,7 +34,6 @@ dependencies = { file = "requirements.txt" }
 
 [tool.setuptools.dynamic.optional-dependencies]
 dev = { file = "requirements/requirements-dev.txt" }
-help = { file = "requirements/requirements-help.txt" }
 browser = { file = "requirements/requirements-browser.txt" }
 playwright = { file = "requirements/requirements-playwright.txt" }
 
@@ -48,5 +51,5 @@ build-backend = "setuptools.build_meta"
 write_to = "aider/_version.py"
 
 [tool.codespell]
-skip = "*.svg,Gemfile.lock,tests/fixtures/*,aider/website/assets/*"
+skip = "*.svg,Gemfile.lock,tests/fixtures/*"
 write-changes = true
