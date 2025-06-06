@@ -1511,19 +1511,6 @@ class Commands:
         except Exception as e:
             self.io.tool_error(f"An unexpected error occurred while copying to clipboard: {str(e)}")
 
-    def cmd_report(self, args):
-        "Report a problem by opening a GitHub Issue"
-        from aider.report import report_github_issue
-
-        announcements = "\n".join(self.coder.get_announcements())
-        issue_text = announcements
-
-        if args.strip():
-            title = args.strip()
-        else:
-            title = None
-
-        report_github_issue(issue_text, title=title, confirm=False)
 
     def cmd_editor(self, initial_content=""):
         "Open an editor to write a prompt"

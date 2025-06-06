@@ -1,54 +1,32 @@
+# Aider Configuration File
+# Generated with detected environment variables
+# For full documentation: https://aider.chat/docs/config/
+
 providers:
   ollama:
     type: ollama
-    base_url: http://localhost:11434
-    models:
-    - gemma3:1b-it-qat
-    - phi4-mini-reasoning:latest
-    - qwen3:0.6b
-    - qwen3:1.7b
-model: ollama/qwen3:0.6b
+    base_url: "http://localhost:11434"
+    models: ["gemma3:1b-it-qat", "phi4-mini-reasoning:latest", "qwen3:0.6b", "qwen3:1.7b"]
+
+
+
+# Default model to use
+model: "ollama/qwen3:0.6b"
+
+# Git settings
 git:
   auto_commits: true
-  commit_prefix: 'aider: '
-  auto_add: true
-  dirty_commits: true
+  commit_prefix: "aider: "
   attribute_author: true
-  attribute_committer: true
-  attribute_commit_message_author: false
-  attribute_commit_message_committer: false
-  dry_run: false
+
+# Output settings
 output:
-  user_input_color: '#00cc00'
-  tool_error_color: '#FF2222'
-  tool_warning_color: '#FFA500'
-  assistant_output_color: '#0088ff'
-  completion_menu_color: '#ffffff'
-  completion_menu_bg_color: '#444444'
-  completion_menu_current_color: '#ffffff'
-  completion_menu_current_bg_color: '#666666'
-  code_theme: default
-  stream: true
+  user_input_color: "#00cc00"
   pretty: true
+  stream: true
   show_diffs: false
-  show_repo_map: false
-  show_model_warnings: true
-  verbose: false
-  no_pretty: false
-cache:
-  cache_prompts: false
-  cache_keepalive_pings: 60
-repomap:
-  map_tokens: 1024
-  map_refresh: auto
-  map_multiplier_no_files: 2.0
-  repo_map: true
-voice:
-  voice_format: wav
-  voice_language: en
-analytics:
-  analytics: true
-edit_format: diff
-encoding: utf-8
+
+# Other settings
+edit_format: "diff"
 vim: false
-check_update: true
+encoding: "utf-8"
